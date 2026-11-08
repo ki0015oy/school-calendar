@@ -1,0 +1,29 @@
+{
+  "name": "school_calendar",
+  "version": "1.0.0",
+  "description": "Google Apps Script project to manage school events, timetables, and items to bring",
+  "scripts": {
+    "login": "clasp login",
+    "login:status": "clasp login --status",
+    "logout": "clasp logout",
+    "build": "tsc && cp src/appsscript.json dist/",
+    "push": "npm run build && clasp push",
+    "push:force": "npm run build && clasp push -f",
+    "pull": "clasp pull && cp dist/appsscript.json src/",
+    "open": "clasp open",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "google-apps-script",
+    "clasp",
+    "calendar",
+    "school"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@google/clasp": "^3.4.1",
+    "@types/google-apps-script": "^2.0.15",
+    "typescript": "^7.0.2"
+  }
+}

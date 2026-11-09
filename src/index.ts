@@ -4,6 +4,10 @@
 
 const DAY_NAMES_JA = ["日", "月", "火", "水", "木", "金", "土"];
 
+// ホーム画面追加・ファビコン用のアプリアイコンURL（PNG形式）
+const APP_FAVICON_PNG_URL =
+  "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3eb.png";
+
 /**
  * Webアプリのエントリーポイント
  */
@@ -15,11 +19,38 @@ function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.HTML.HtmlOutp
   (template as unknown as { initialPayloadJson: string }).initialPayloadJson =
     JSON.stringify(payload);
 
-  return template
+  const output = template
     .evaluate()
     .setTitle("学校カレンダー")
-    .addMetaTag("viewport", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no")
+    .addMetaTag(
+      "viewport",
+      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    )
+    .addMetaTag("apple-mobile-web-app-capable", "yes")
+    .addMetaTag("mobile-web-app-capable", "yes")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+
+  try {
+    output.setFaviconUrl(APP_FAVICON_PNG_URL);
+  } catch (_e) {
+    // ファビコン設定が制限された場合は無視
+  }
+
+  const extraMetaTags: Array<[string, string]> = [
+    ["theme-color", "#1e40af"],
+    ["apple-mobile-web-app-status-bar-style", "default"],
+    ["apple-mobile-web-app-title", "学校カレンダー"],
+    ["application-name", "学校カレンダー"],
+  ];
+  for (const [name, content] of extraMetaTags) {
+    try {
+      output.addMetaTag(name, content);
+    } catch (_e) {
+      // GAS側で未サポートのmetaタグ名の場合は無視
+    }
+  }
+
+  return output;
 }
 
 /**
@@ -491,7 +522,7 @@ function computeInitialRoute(
       targetDate: todayStr,
       targetWeekMonday: getMondayOfDate(todayStr),
       targetEventId: todayEvents[0].id,
-      reasonBanner: `🎪 本日開催の「${todayEvents[0].title}」を表示しています`,
+      reasonBanner: "",
       nowIso: Utilities.formatDate(now, "Asia/Tokyo", "yyyy-MM-dd'T'HH:mm:ss"),
       todayDate: todayStr,
     };
@@ -505,7 +536,7 @@ function computeInitialRoute(
       targetDate: nextMonday,
       targetWeekMonday: nextMonday,
       targetEventId: defaultEventId,
-      reasonBanner: "🗓️ 週末のため、来週（月〜金）の予定を表示しています",
+      reasonBanner: "",
       nowIso: Utilities.formatDate(now, "Asia/Tokyo", "yyyy-MM-dd'T'HH:mm:ss"),
       todayDate: todayStr,
     };
@@ -523,7 +554,7 @@ function computeInitialRoute(
       targetDate: nextMonday,
       targetWeekMonday: nextMonday,
       targetEventId: defaultEventId,
-      reasonBanner: "🗓️ 今週の登校最終日午後のため、来週（月〜金）の予定を表示しています",
+      reasonBanner: "",
       nowIso: Utilities.formatDate(now, "Asia/Tokyo", "yyyy-MM-dd'T'HH:mm:ss"),
       todayDate: todayStr,
     };
@@ -536,7 +567,7 @@ function computeInitialRoute(
       targetDate: todayStr,
       targetWeekMonday: currentMonday,
       targetEventId: defaultEventId,
-      reasonBanner: "☀️ 平日の午前のため、本日の予定を表示しています",
+      reasonBanner: "",
       nowIso: Utilities.formatDate(now, "Asia/Tokyo", "yyyy-MM-dd'T'HH:mm:ss"),
       todayDate: todayStr,
     };
@@ -549,7 +580,7 @@ function computeInitialRoute(
     targetDate: tomorrowStr,
     targetWeekMonday: getMondayOfDate(tomorrowStr),
     targetEventId: defaultEventId,
-    reasonBanner: "🌙 平日の午後のため、明日の予定を表示しています",
+    reasonBanner: "",
     nowIso: Utilities.formatDate(now, "Asia/Tokyo", "yyyy-MM-dd'T'HH:mm:ss"),
     todayDate: todayStr,
   };

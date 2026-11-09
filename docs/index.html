@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1e40af">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="学校カレンダー">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/png" href="./icon-192.png">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <title>学校カレンダー</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      color: #0f172a;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+    .setup-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 20px;
+    }
+    .setup-card {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 20px;
+      max-width: 440px;
+      width: 100%;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+      border: 1px solid #e2e8f0;
+    }
+    .setup-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      margin: 0 0 10px 0;
+      color: #1e40af;
+    }
+    .setup-desc {
+      font-size: 0.86rem;
+      color: #475569;
+      margin: 0 0 14px 0;
+      line-height: 1.5;
+    }
+    .url-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      margin-bottom: 12px;
+    }
+    .save-btn {
+      width: 100%;
+      padding: 11px;
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="appRoot" style="width:100%; height:100%;"></div>
+
+  <script>
+    // GASのウェブアプリURLを固定したい場合はここに設定できます（空欄の場合は初回起動時に入力・保存）
+    const DEFAULT_GAS_EXEC_URL = "";
+    const STORAGE_KEY = "school_calendar_gas_exec_url";
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      });
+    }
+
+    function getTargetUrl() {
+      const params = new URLSearchParams(location.search);
+      const paramUrl = params.get("gas");
+      if (paramUrl && /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(paramUrl)) {
+        localStorage.setItem(STORAGE_KEY, paramUrl);
+        return paramUrl;
+      }
+      if (DEFAULT_GAS_EXEC_URL) return DEFAULT_GAS_EXEC_URL;
+      return localStorage.getItem(STORAGE_KEY) || "";
+    }
+
+    function renderShell() {
+      const root = document.getElementById("appRoot");
+      const url = getTargetUrl();
+      if (url) {
+        root.innerHTML = `<iframe src="${url}" allow="clipboard-read; clipboard-write"></iframe>`;
+      } else {
+        root.innerHTML = `
+          <div class="setup-screen">
+            <div class="setup-card">
+              <h1 class="setup-title">🏫 学校カレンダー初期設定</h1>
+              <p class="setup-desc">
+                デプロイした Google Apps Script ウェブアプリのURL（<code>https://script.google.com/macros/s/.../exec</code>）を入力してください。一度保存すると次回から自動で開きます。
+              </p>
+              <input id="gasUrlInput" class="url-input" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+              <button class="save-btn" onclick="saveGasUrl()">保存して開く</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function saveGasUrl() {
+      const input = document.getElementById("gasUrlInput");
+      const val = (input.value || "").trim();
+      if (!val || !/^https:\/\/script\.google\.com\/macros\/s\//.test(val)) {
+        alert("有効な GAS ウェブアプリのURL（https://script.google.com/macros/s/.../exec）を入力してください。");
+        return;
+      }
+      localStorage.setItem(STORAGE_KEY, val);
+      renderShell();
+    }
+
+    renderShell();
+  </script>
+</body>
+</html>

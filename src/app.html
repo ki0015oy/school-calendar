@@ -2,7 +2,16 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1e40af">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="学校カレンダー">
+  <meta name="application-name" content="学校カレンダー">
+  <link id="appIconLink" rel="icon" type="image/png" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3eb.png">
+  <link id="appleTouchIconLink" rel="apple-touch-icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3eb.png">
+  <link id="appManifestLink" rel="manifest" href='data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22%E5%AD%A6%E6%A0%A1%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%22%2C%22short_name%22%3A%22%E5%AD%A6%E6%A0%A1%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f1f5f9%22%2C%22theme_color%22%3A%22%231e40af%22%7D'>
   <title>学校カレンダー</title>
   <style>
     :root {
@@ -49,7 +58,7 @@
       z-index: 100;
       background: linear-gradient(135deg, #1e40af, #2563eb);
       color: #ffffff;
-      padding: 10px 14px;
+      padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -63,6 +72,7 @@
       align-items: center;
       gap: 6px;
       margin: 0;
+      white-space: nowrap;
     }
 
     .header-actions {
@@ -84,32 +94,11 @@
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      white-space: nowrap;
     }
 
     .header-btn:active {
       background: rgba(255, 255, 255, 0.32);
-    }
-
-    /* 初期表示理由バナー */
-    .route-banner {
-      background: #dbeafe;
-      color: #1e3a8a;
-      font-size: 0.8rem;
-      font-weight: 600;
-      padding: 7px 14px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid #bfdbfe;
-    }
-
-    .route-banner-close {
-      background: none;
-      border: none;
-      color: #1e3a8a;
-      font-size: 1rem;
-      cursor: pointer;
-      padding: 0 4px;
     }
 
     /* メインコンテナ */
@@ -123,7 +112,7 @@
     .nav-card {
       background: var(--card-bg);
       border-radius: var(--radius);
-      padding: 10px 12px;
+      padding: 10px;
       margin-bottom: 12px;
       box-shadow: var(--shadow);
       border: 1px solid var(--border);
@@ -133,19 +122,20 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: 6px;
     }
 
     .nav-arrow-btn {
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 8px 12px;
-      font-size: 0.85rem;
+      padding: 8px 10px;
+      font-size: 0.8rem;
       font-weight: 700;
       color: var(--text-main);
       cursor: pointer;
       flex-shrink: 0;
+      white-space: nowrap;
       user-select: none;
     }
 
@@ -160,24 +150,26 @@
 
     .nav-center {
       flex: 1;
+      min-width: 0;
       text-align: center;
       position: relative;
     }
 
     .nav-date-label {
-      font-size: 1.05rem;
+      font-size: clamp(0.84rem, 3.8vw, 1rem);
       font-weight: 800;
-      color: var(--text-main);
-      display: inline-flex;
+      display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      padding: 6px 10px;
+      padding: 7px 6px;
       border-radius: 8px;
       background: var(--primary-light);
       color: var(--primary-dark);
       cursor: pointer;
       width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .hidden-date-input {
@@ -193,7 +185,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: 6px;
       margin-top: 8px;
       flex-wrap: wrap;
     }
@@ -202,11 +194,12 @@
       background: #f8fafc;
       border: 1px solid var(--border);
       border-radius: 999px;
-      padding: 4px 12px;
-      font-size: 0.76rem;
+      padding: 4px 10px;
+      font-size: 0.75rem;
       font-weight: 600;
       color: var(--text-sub);
       cursor: pointer;
+      white-space: nowrap;
     }
 
     .chip-btn.active {
@@ -543,6 +536,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
       cursor: pointer;
     }
 
@@ -551,7 +545,14 @@
       font-weight: 800;
       display: flex;
       align-items: center;
-      gap: 8px;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .weekly-day-date {
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .weekly-day-body {
@@ -731,12 +732,6 @@
     </div>
   </header>
 
-  <!-- 自動初期表示バナー -->
-  <div id="routeBanner" class="route-banner" style="display:none;">
-    <span id="routeBannerText"></span>
-    <button class="route-banner-close" onclick=" closeRouteBanner()" aria-label="閉じる">×</button>
-  </div>
-
   <!-- メインコンテンツ領域 -->
   <main class="container" id="mainContainer">
     <!-- JSで描画 -->
@@ -773,20 +768,95 @@
     };
 
     window.addEventListener("DOMContentLoaded", () => {
+      setupPwaAssets();
       initApp();
     });
+
+    function setupPwaAssets() {
+      try {
+        const generateIconDataUrl = (size) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return "";
+
+          // 角丸背景グラデーション
+          const r = size * 0.22;
+          const grad = ctx.createLinearGradient(0, 0, size, size);
+          grad.addColorStop(0, "#1e40af");
+          grad.addColorStop(1, "#2563eb");
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.lineTo(size - r, 0);
+          ctx.quadraticCurveTo(size, 0, size, r);
+          ctx.lineTo(size, size - r);
+          ctx.quadraticCurveTo(size, size, size - r, size);
+          ctx.lineTo(r, size);
+          ctx.quadraticCurveTo(0, size, 0, size - r);
+          ctx.lineTo(0, r);
+          ctx.quadraticCurveTo(0, 0, r, 0);
+          ctx.closePath();
+          ctx.fill();
+
+          // アイコン絵文字
+          ctx.font = `${Math.round(size * 0.56)}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("🏫", size / 2, size * 0.54);
+          return canvas.toDataURL("image/png");
+        };
+
+        const icon192 = generateIconDataUrl(192);
+        const icon512 = generateIconDataUrl(512);
+
+        if (icon192) {
+          const iconLink = document.getElementById("appIconLink");
+          const appleLink = document.getElementById("appleTouchIconLink");
+          if (iconLink) iconLink.href = icon192;
+          if (appleLink) appleLink.href = icon192;
+        }
+
+        const manifestObj = {
+          name: "学校カレンダー",
+          short_name: "学校カレンダー",
+          description: "子どもの1日の予定・1週間の予定・イベント情報を確認できる学校カレンダーアプリ",
+          start_url: location.href,
+          display: "standalone",
+          orientation: "portrait",
+          background_color: "#f1f5f9",
+          theme_color: "#1e40af",
+          icons: [
+            {
+              src: icon192 || "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3eb.png",
+              sizes: "192x192",
+              type: "image/png",
+              purpose: "any maskable",
+            },
+            {
+              src: icon512 || "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3eb.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "any maskable",
+            },
+          ],
+        };
+
+        const manifestLink = document.getElementById("appManifestLink");
+        if (manifestLink) {
+          manifestLink.href =
+            "data:application/manifest+json;charset=utf-8," +
+            encodeURIComponent(JSON.stringify(manifestObj));
+        }
+      } catch (_e) {
+        // Canvas / Manifest生成エラー時は無視
+      }
+    }
 
     function initApp() {
       const p = appState.payload;
       updateHeaderLinks(p);
-
-      if (p.initialRoute && p.initialRoute.reasonBanner && p.status === "ok") {
-        const banner = document.getElementById("routeBanner");
-        const bannerText = document.getElementById("routeBannerText");
-        bannerText.textContent = p.initialRoute.reasonBanner;
-        banner.style.display = "flex";
-      }
-
       render();
     }
 
@@ -807,10 +877,6 @@
       } else {
         folderLink.style.display = "none";
       }
-    }
-
-    function closeRouteBanner() {
-      document.getElementById("routeBanner").style.display = "none";
     }
 
     function switchView(viewName) {
@@ -1034,7 +1100,6 @@
             <div class="nav-center">
               <div class="nav-date-label">
                 <span>${formatDateJa(dateStr)} (${dayData.dayOfWeek})</span>
-                <span>📅</span>
               </div>
               <input type="date" class="hidden-date-input" value="${dateStr}" onchange="changeDailyDate(this.value)">
             </div>
@@ -1224,11 +1289,11 @@
             <div class="weekly-day-card ${isToday ? "today-highlight" : ""}">
               <div class="weekly-day-header" onclick="openDailyFromWeekly('${d.date}')">
                 <div class="weekly-day-title">
-                  <span>${formatShortMd(d.date)} (${d.dayOfWeek})</span>
+                  <span class="weekly-day-date">${formatShortMd(d.date)} (${d.dayOfWeek})</span>
                   ${statusBadge}
                   ${lunchMini}
                 </div>
-                <span style="font-size:0.78rem; color:var(--primary); font-weight:700;">1日表示 ▶</span>
+                <span style="font-size:0.78rem; color:var(--primary); font-weight:700; white-space:nowrap; flex-shrink:0;">1日表示 ▶</span>
               </div>
               <div class="weekly-day-body">
                 ${bodyContent}
@@ -1246,7 +1311,6 @@
             <div class="nav-center">
               <div class="nav-date-label">
                 <span>${formatShortMd(mondayStr)}(月) 〜 ${formatShortMd(fridayStr)}(金)</span>
-                <span>📅</span>
               </div>
               <input type="date" class="hidden-date-input" value="${mondayStr}" onchange="changeWeekByAnyDate(this.value)">
             </div>

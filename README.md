@@ -14,7 +14,8 @@ school_calendar/
 │   ├── template.ts       # スプレッドシート&フォルダの自動作成・サンプルデータ投入
 │   ├── index.ts          # バックエンド（シート読込・日付結合・自動初期表示判定）
 │   └── app.html          # スマホ最適化WebアプリUI（1日/週間/イベント切替・持ち物チェック）
-├── AI_PROMPTS.md         # 配布プリントから生成AIでTSVを作成するプロンプト集
+├── docs/                 # PWAインストール用ラッパー（Manifest / Service Worker / アイコン）
+├── AI_PROMPTS.md         # 配布プリントから生成AIでスプレッドシートを更新するプロンプト集
 ├── package.json          # ビルド・デプロイ用スクリプト
 └── tsconfig.json         # TypeScript設定
 ```
@@ -49,6 +50,21 @@ npm run push:force
 
 ---
 
+## 📱 スマホへのアプリ（PWA）インストール方法
+
+### 方法A：GASのWebアプリURLから直接ホーム画面に追加する（手軽）
+GAS側で `mobile-web-app-capable` / `apple-mobile-web-app-capable` およびアプリアイコンを設定済みのため、そのままホーム画面に追加して全画面アプリ風に起動できます。
+- **Android (Chrome)**: WebアプリのURLを開き、右上のメニュー「⋮」＞ **「ホーム画面に追加」** をタップ
+- **iPhone (Safari)**: WebアプリのURLを開き、下部の共有ボタン「↑」＞ **「ホーム画面に追加」** をタップ
+
+### 方法B：GitHub Pages 経由でネイティブPWAとしてインストールする（Service Worker + Manifest 完全対応）
+Google Apps Script の仕様上、`script.google.com` ドメイン直下では Service Worker を配信できないため、Chromeの「アプリをインストール（WebAPK）」を使う場合は `docs/` フォルダを GitHub Pages 等で公開します。
+1. GitHub リポジトリの **Settings ＞ Pages** で、Source を `Deploy from a branch`、Branch を `main` / `/docs` に設定して保存します。
+2. 公開された GitHub Pages のURL（`https://<ユーザー名>.github.io/school-calendar/?gas=<GASのexecのURL>`）をスマホの Chrome / Safari で開きます。
+3. ブラウザのメニューから **「アプリをインストール」**（または「ホーム画面に追加」）を選択すると、独立したPWAアプリとしてインストールされます。
+
+---
+
 ## 🛠️ よく使う開発コマンド
 
 | コマンド | 説明 |
@@ -58,3 +74,4 @@ npm run push:force
 | `npm run push` | ビルドしてGASへアップロード |
 | `npm run push:force` | マニフェスト（`appsscript.json`）ごと強制アップロード |
 | `npm run open` | ブラウザでGASエディタを開く |
+

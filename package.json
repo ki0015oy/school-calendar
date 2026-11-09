@@ -6,11 +6,12 @@
     "login": "clasp login",
     "login:status": "clasp login --status",
     "logout": "clasp logout",
-    "build": "tsc && cp src/appsscript.json dist/",
-    "push": "npm run build && clasp push",
+    "build": "rm -rf dist && tsc && cp src/appsscript.json src/*.html dist/",
+    "push": "npm run build && clasp push -f",
     "push:force": "npm run build && clasp push -f",
     "pull": "clasp pull && cp dist/appsscript.json src/",
-    "open": "clasp open",
+    "open": "clasp open-script",
+    "open:webapp": "clasp open-web-app",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

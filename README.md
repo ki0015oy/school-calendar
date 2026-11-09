@@ -1,76 +1,60 @@
-# 学校カレンダー管理 (Google Apps Script + clasp)
+# 学校カレンダー管理 Webアプリ (Google Apps Script + clasp)
 
-Google Apps Script (GAS) と TypeScript / clasp を利用して、子どもの学校行事・時間割・持っていくものなどを一括管理・通知するカレンダープロジェクトです。
+Google Drive の特定フォルダに格納されたスプレッドシートと配布資料（PDF・画像）をもとに、子どもの **1日の予定・1週間の予定・イベント情報** をスマホで快適に確認できる保護者向けWebアプリです。
 
 ---
 
-## 📁 ディレクトリ構成
+## 📁 ファイル構成
 
 ```
 school_calendar/
 ├── src/
-│   ├── appsscript.json   # GASのマニフェストファイル（タイムゾーン: Asia/Tokyo）
-│   └── index.ts          # メイン処理（TypeScript、学校行事・時間割等の登録ロジック）
-├── .clasp.json.sample    # clasp設定のサンプル
-├── .gitignore            # 認証情報やnode_modulesの除外設定
-├── package.json          # プロジェクト依存関係とnpmスクリプト
-├── tsconfig.json         # TypeScript設定（@types/google-apps-script対応）
-└── README.md
+│   ├── appsscript.json   # GASマニフェスト（Asia/Tokyo、USER_ACCESSING Webアプリ設定）
+│   ├── types.ts          # データ構造・型定義
+│   ├── template.ts       # スプレッドシート&フォルダの自動作成・サンプルデータ投入
+│   ├── index.ts          # バックエンド（シート読込・日付結合・自動初期表示判定）
+│   └── app.html          # スマホ最適化WebアプリUI（1日/週間/イベント切替・持ち物チェック）
+├── AI_PROMPTS.md         # 配布プリントから生成AIでTSVを作成するプロンプト集
+├── package.json          # ビルド・デプロイ用スクリプト
+└── tsconfig.json         # TypeScript設定
 ```
 
 ---
 
-## 🚀 開発の始め方
+## 🚀 デプロイと初期セットアップ手順
 
-### 1. Google Apps Script API の有効化（初回のみ）
-clasp を使用して Google Drive / GAS と通信するために、以下の設定ページを開き、**「Google Apps Script API」を「オン」** に変更してください。
-👉 [Google Apps Script ユーザー設定](https://script.google.com/home/usersettings)
-
-### 2. Googleアカウントへログイン
-ターミナルで以下のコマンドを実行し、ブラウザでGoogleアカウントの認証を行います。
+### 1. GASへコードをプッシュ
 ```bash
-npm run login
-```
-※ リモート環境などでブラウザが自動で開かない場合は、以下を実行してURLから認証コードを取得できます。
-```bash
-npx clasp login --no-localhost
+npm run push:force
 ```
 
-### 3. プロジェクトの作成 または 紐付け
+### 2. Webアプリとしてデプロイ（初回のみ）
+1. `npm run open` でブラウザの Google Apps Script エディタを開きます。
+2. 右上の **「デプロイ」 ＞ 「新しいデプロイ」** をクリックします。
+3. 種類の選択（歯車アイコン）で **「ウェブアプリ」** を選択します。
+4. 以下のように設定します：
+   - **説明**: `学校カレンダー v1`
+   - **次のユーザーとして実行**: **「ウェブアプリケーションにアクセスしているユーザー」**
+   - **アクセスできるユーザー**: **「Google アカウントを持つ全員」**
+5. **「デプロイ」** をクリックし、表示された **ウェブアプリのURL** を開きます。
 
-#### パターンA: 新規にGASプロジェクトを作成する場合
-```bash
-npm run create -- --title "学校カレンダー管理" --type standalone
-```
-実行すると、自動的に `.clasp.json` が生成され、GASプロジェクトとローカルフォルダが紐づきます。
+### 3. テンプレートスプレッドシートの作成
+- デプロイしたWebアプリのURLを開き、画面に表示される **「✨ サンプル入りスプレッドシートを自動作成する」** ボタンを押します（またはGASエディタ上で `setupTemplateSpreadsheet` 関数を実行します）。
+- Google Drive 内に **`学校カレンダー`** フォルダと **`学校カレンダー管理`** スプレッドシート（`日次予定` / `昼食` / `イベント` の3シート＋サンプルPDFのデータ投入済み）が自動生成されます。
+- クラス通信や弁当控えなどのPDF（`sample_weekly.pdf`, `sample_lunch.pdf`, `sample_event.pdf` 等）をこの **`学校カレンダー`** フォルダ内にアップロードすると、アプリ内の「参照資料リンク」からワンタップで開けるようになります。
 
-#### パターンB: 既存のGASプロジェクトを連携する場合
-Google Apps Script エディタの「プロジェクトの設定」にある「スクリプト ID」をコピーし、以下を実行します。
-```bash
-npm run clone <スクリプトID>
-```
+### 4. 保護者（ご家族）への共有設定
+- Google Drive の **`学校カレンダー`** フォルダを右クリック ＞ **「共有」** を開き、**保護者のGoogleアカウント（ご夫婦など）のみ** を追加します。
+- これにより、共有された保護者のGoogleアカウントだけがWebアプリから予定を閲覧でき、第三者がURLを開いてもデータは一切表示されません。
 
 ---
 
-## 🛠️ 日常の開発コマンド
+## 🛠️ よく使う開発コマンド
 
 | コマンド | 説明 |
 | :--- | :--- |
-| `npm run typecheck` | TypeScriptの型チェックをローカルで実行 |
-| `npm run push` | ローカルのコード (`src/`) をGASにアップロード（TypeScriptは自動トランスパイルされます） |
-| `npm run push:watch` | ファイル変更を監視して自動でGASにプッシュ |
-| `npm run pull` | GAS上の最新コードをローカル (`src/`) にダウンロード |
-| `npm run open` | ブラウザで紐付いたGoogle Apps Scriptエディタを開く |
-| `npm run login:status` | 現在のログイン状態を確認 |
-
----
-
-## 📅 本プロジェクトで実装予定の機能イメージ
-
-- **学校行事カレンダー連携**:
-  - 行事予定（運動会、保護者会、学年閉鎖、遠足など）の終日イベント登録
-- **時間割 & 持ち物リマインダー**:
-  - 曜日ごとの時間割（1〜6校時）や特別な時間割変更の管理
-  - 「体操着」「絵の具」「連絡帳」「水筒」などの持ち物リストをカレンダーの説明欄や通知に自動反映
-- **前日リマインド通知**:
-  - 毎夕（例: 18:00）にトリガー実行し、翌日の時間割と必要な持ち物をLINEやGoogleカレンダー通知/メールでお知らせ
+| `npm run typecheck` | TypeScriptの型チェックを実行 |
+| `npm run build` | `src/` を `dist/` にビルド |
+| `npm run push` | ビルドしてGASへアップロード |
+| `npm run push:force` | マニフェスト（`appsscript.json`）ごと強制アップロード |
+| `npm run open` | ブラウザでGASエディタを開く |

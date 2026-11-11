@@ -788,6 +788,7 @@
     };
 
     let tokenClient = null;
+    let backendClientId = "";
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
@@ -799,20 +800,13 @@
       bootApp();
     });
 
-    function getGoogleClientId() {
-      const cfg = window.APP_CONFIG || {};
-      return (cfg.GOOGLE_CLIENT_ID || "").trim();
-    }
-
     function getGasApiUrl() {
       const cfg = window.APP_CONFIG || {};
       return (cfg.GAS_API_URL || "").trim();
     }
 
     function isAppConfigured() {
-      const clientId = getGoogleClientId();
       const apiUrl = getGasApiUrl();
-      if (!clientId || clientId.indexOf("YOUR_GOOGLE_CLIENT_ID") !== -1) return false;
       if (!apiUrl || apiUrl.indexOf("YOUR_DEPLOYMENT_ID") !== -1) return false;
       return true;
     }
@@ -853,6 +847,19 @@
       return await response.json();
     }
 
+    async function ensureBackendClientId() {
+      if (backendClientId) return backendClientId;
+      try {
+        const res = await callGasApi({ action: "getPublicConfig" });
+        if (res && res.clientId) {
+          backendClientId = res.clientId.trim();
+        }
+      } catch (e) {
+        console.warn("getPublicConfig failed:", e);
+      }
+      return backendClientId;
+    }
+
     async function bootApp() {
       if (!isAppConfigured()) {
         render();
@@ -860,33 +867,62 @@
       }
 
       const savedToken = getSavedSessionToken();
-      if (!savedToken) {
-        appState.payload = {
-          status: "unauthenticated",
-          message: "Googleアカウントでログインしてください。",
-        };
+      if (savedToken) {
+        appState.isLoading = true;
+        appState.loadingMessage = "予定データを読み込んでいます...";
         render();
-        return;
+
+        try {
+          const payload = await callGasApi({
+            action: "getData",
+            sessionToken: savedToken,
+          });
+          if (payload.status === "unauthenticated") {
+            saveSessionToken("");
+            await showLoginFlow();
+            return;
+          }
+          applyPayload(payload, true);
+          return;
+        } catch (err) {
+          appState.isLoading = false;
+          appState.payload = {
+            status: "error",
+            message: "サーバーとの通信に失敗しました: " + (err && err.message ? err.message : String(err)),
+          };
+          render();
+          return;
+        }
       }
 
+      await showLoginFlow();
+    }
+
+    async function showLoginFlow() {
       appState.isLoading = true;
-      appState.loadingMessage = "予定データを読み込んでいます...";
+      appState.loadingMessage = "認証設定を確認しています...";
       render();
 
       try {
-        const payload = await callGasApi({
-          action: "getData",
-          sessionToken: savedToken,
-        });
-        if (payload.status === "unauthenticated") {
-          saveSessionToken("");
+        const cid = await ensureBackendClientId();
+        appState.isLoading = false;
+        if (!cid) {
+          appState.payload = {
+            status: "needs_client_id",
+            message: "GASのスクリプトプロパティに GOOGLE_CLIENT_ID が設定されていません。",
+          };
+        } else {
+          appState.payload = {
+            status: "unauthenticated",
+            message: "Googleアカウントでログインしてください。",
+          };
         }
-        applyPayload(payload, true);
+        render();
       } catch (err) {
         appState.isLoading = false;
         appState.payload = {
           status: "error",
-          message: "サーバーとの通信に失敗しました: " + (err && err.message ? err.message : String(err)),
+          message: "GASバックエンドへの接続に失敗しました: " + (err && err.message ? err.message : String(err)),
         };
         render();
       }
@@ -911,8 +947,18 @@
       render();
     }
 
-    function startGoogleLogin(forceSelectAccount) {
+    async function startGoogleLogin(forceSelectAccount) {
       if (!isAppConfigured()) {
+        render();
+        return;
+      }
+
+      const cid = await ensureBackendClientId();
+      if (!cid) {
+        appState.payload = {
+          status: "needs_client_id",
+          message: "GASのスクリプトプロパティに GOOGLE_CLIENT_ID が設定されていません。",
+        };
         render();
         return;
       }
@@ -929,7 +975,7 @@
       }
 
       tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: getGoogleClientId(),
+        client_id: cid,
         scope: "email",
         callback: async (tokenResponse) => {
           if (!tokenResponse || tokenResponse.error || !tokenResponse.access_token) {
@@ -948,6 +994,7 @@
             const payload = await callGasApi({
               action: "login",
               accessToken: tokenResponse.access_token,
+              clientId: cid,
             });
             if (payload.sessionToken) {
               saveSessionToken(payload.sessionToken);
@@ -1041,9 +1088,8 @@
             <div style="font-size:2.4rem; margin-bottom:8px;">⚙️</div>
             <h2 style="margin:0 0 8px 0; font-size:1.1rem;">フロントエンド設定が必要です</h2>
             <p style="color:var(--text-sub); font-size:0.88rem; margin:0; text-align:left; line-height:1.6;">
-              <code>docs/config.js</code> に以下の2つの設定値を入力してください：<br>
-              1. <code>GOOGLE_CLIENT_ID</code>（Google Cloud の OAuth クライアントID）<br>
-              2. <code>GAS_API_URL</code>（GAS ウェブアプリのデプロイURL）
+              <code>docs/config.js</code> にデプロイした GAS ウェブアプリの URL を設定してください：<br>
+              <code>GAS_API_URL: "https://script.google.com/macros/s/.../exec"</code>
             </p>
           </div>
         `;
@@ -1056,6 +1102,22 @@
       }
 
       const p = appState.payload;
+
+      if (p && p.status === "needs_client_id") {
+        container.innerHTML = `
+          <div class="card center-box">
+            <div style="font-size:2.4rem; margin-bottom:8px;">⚙️</div>
+            <h2 style="margin:0 0 8px 0; font-size:1.1rem;">Google OAuth クライアントIDの設定</h2>
+            <p style="color:var(--text-sub); font-size:0.88rem; margin:0 0 12px 0; text-align:left; line-height:1.6;">
+              GASのスクリプトプロパティに <code>GOOGLE_CLIENT_ID</code> が登録されていません。<br>
+              GASエディタの「プロジェクトの設定 ＞ スクリプト プロパティ」に <code>GOOGLE_CLIENT_ID</code> を追加するか、エディタ上で <code>setGoogleClientId("あなたのクライアントID")</code> を実行してください。
+            </p>
+            <button class="primary-btn" onclick="showLoginFlow()">🔄 設定後に再確認する</button>
+          </div>
+        `;
+        return;
+      }
+
       if (!p || p.status === "unauthenticated" || p.status === "logged_out") {
         container.innerHTML = `
           <div class="card center-box">

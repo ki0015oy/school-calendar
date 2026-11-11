@@ -8,7 +8,7 @@ const DAY_NAMES_JA = ["日", "月", "火", "水", "木", "金", "土"];
 const ALLOWED_OAUTH_CLIENT_ID = "";
 
 const PROP_KEY_SESSIONS = "AUTH_SESSIONS_JSON";
-const PROP_KEY_OAUTH_CLIENT_ID = "OAUTH_CLIENT_ID";
+const PROP_KEY_OAUTH_CLIENT_ID = "GOOGLE_CLIENT_ID";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30日間有効
 const MAX_SESSIONS = 30;
 
@@ -48,6 +48,19 @@ function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.Content.TextO
 }
 
 /**
+ * スクリプトプロパティに GOOGLE_CLIENT_ID を設定・更新するヘルパー関数
+ * GASエディタから関数を実行して簡単にクライアントIDを保存できます。
+ */
+function setGoogleClientId(clientId: string): void {
+  const trimmed = (clientId || "").trim();
+  if (!trimmed) {
+    throw new Error("clientId が空です。有効な OAuth クライアント ID を指定してください。");
+  }
+  PropertiesService.getScriptProperties().setProperty(PROP_KEY_OAUTH_CLIENT_ID, trimmed);
+  console.log(`✅ GOOGLE_CLIENT_ID をスクリプトプロパティに保存しました: ${trimmed}`);
+}
+
+/**
  * GASエディタから初回実行して必要な権限（Drive / Sheets / 外部通信）を承認するためのヘルパー関数
  */
 function authorizeBackendScopes(): void {
@@ -66,6 +79,18 @@ function handleApiRequest(req: ApiRequestBody): AppDataPayload {
   const now = parseNowJst(req.now);
 
   try {
+    // 0. 公開設定（クライアントID等）の取得（ログイン前でもアクセス可能）
+    if (action === "getPublicConfig") {
+      const clientId = (
+        PropertiesService.getScriptProperties().getProperty(PROP_KEY_OAUTH_CLIENT_ID) ||
+        ALLOWED_OAUTH_CLIENT_ID ||
+        ""
+      ).trim();
+      return buildEmptyPayload("ok", now, {
+        clientId,
+      });
+    }
+
     // 1. ログアウト処理
     if (action === "logout") {
       if (req.sessionToken) {
@@ -163,7 +188,7 @@ function createJsonResponse(payload: AppDataPayload): GoogleAppsScript.Content.T
 function buildEmptyPayload(
   status: AppDataPayload["status"],
   now: Date,
-  extra?: { message?: string; userEmail?: string; sessionToken?: string }
+  extra?: { message?: string; userEmail?: string; sessionToken?: string; clientId?: string }
 ): AppDataPayload {
   const todayStr = formatDateYmd(now);
   return {
@@ -171,6 +196,7 @@ function buildEmptyPayload(
     message: extra && extra.message ? extra.message : undefined,
     userEmail: extra && extra.userEmail ? extra.userEmail : undefined,
     sessionToken: extra && extra.sessionToken ? extra.sessionToken : undefined,
+    clientId: extra && extra.clientId ? extra.clientId : undefined,
     initialRoute: {
       view: "daily",
       targetDate: todayStr,

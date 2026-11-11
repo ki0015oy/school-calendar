@@ -69,6 +69,7 @@ interface AppDataPayload {
   message?: string;
   userEmail?: string;
   sessionToken?: string;
+  clientId?: string;
   spreadsheetUrl?: string;
   folderUrl?: string;
   initialRoute: InitialRoute;
@@ -87,7 +88,7 @@ interface SessionStoreMap {
 }
 
 interface ApiRequestBody {
-  action?: "login" | "getData" | "setup" | "logout";
+  action?: "getPublicConfig" | "login" | "getData" | "setup" | "logout";
   accessToken?: string;
   idToken?: string;
   sessionToken?: string;

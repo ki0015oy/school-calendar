@@ -2,7 +2,7 @@
   "timeZone": "Asia/Tokyo",
   "dependencies": {},
   "webapp": {
-    "executeAs": "ME",
+    "executeAs": "USER_DEPLOYING",
     "access": "ANYONE_ANONYMOUS"
   },
   "exceptionLogging": "STACKDRIVER",

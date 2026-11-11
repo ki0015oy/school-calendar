@@ -8,85 +8,786 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="学校カレンダー">
+  <meta name="application-name" content="学校カレンダー">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" type="image/png" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <title>学校カレンダー</title>
+  <script src="./config.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
-    * { box-sizing: border-box; }
-    html, body {
+    :root {
+      --primary: #2563eb;
+      --primary-light: #eff6ff;
+      --primary-dark: #1d4ed8;
+      --accent: #f59e0b;
+      --accent-light: #fffbeb;
+      --success: #10b981;
+      --success-light: #ecfdf5;
+      --danger: #ef4444;
+      --danger-light: #fef2f2;
+      --purple: #7c3aed;
+      --purple-light: #f5f3ff;
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-sub: #475569;
+      --text-muted: #94a3b8;
+      --border: #e2e8f0;
+      --radius: 14px;
+      --shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
       margin: 0;
       padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding-bottom: 84px; /* 下部ナビバー領域 */
+    }
+
+    /* ヘッダー */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: linear-gradient(135deg, #1e40af, #2563eb);
+      color: #ffffff;
+      padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+    }
+
+    .app-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      white-space: nowrap;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .header-btn {
+      background: rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 8px;
+      padding: 5px 9px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
+    .header-btn:active {
+      background: rgba(255, 255, 255, 0.32);
+    }
+
+    /* メインコンテナ */
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 12px;
+    }
+
+    /* ナビゲーションバー（日付・週・イベント選択） */
+    .nav-card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 10px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .nav-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .nav-arrow-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-main);
+      cursor: pointer;
+      flex-shrink: 0;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .nav-arrow-btn:active {
+      background: #e2e8f0;
+    }
+
+    .nav-arrow-btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .nav-center {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      position: relative;
+    }
+
+    .nav-date-label {
+      font-size: clamp(0.84rem, 3.8vw, 1rem);
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px 6px;
+      border-radius: 8px;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      cursor: pointer;
       width: 100%;
-      height: 100%;
+      white-space: nowrap;
       overflow: hidden;
-      background: #f1f5f9;
-      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
-      color: #0f172a;
+      text-overflow: ellipsis;
     }
-    iframe {
+
+    .hidden-date-input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
       width: 100%;
       height: 100%;
-      border: none;
-      display: block;
+      cursor: pointer;
     }
-    .setup-screen {
+
+    .quick-chips {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip-btn {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-sub);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .chip-btn.active {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+
+    /* カード共通 */
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+    }
+
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-green { background: #d1fae5; color: #065f46; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-purple { background: #ede9fe; color: #5b21b6; }
+    .badge-gray { background: #f1f5f9; color: #475569; }
+
+    /* イベント連動バナー */
+    .event-alert-banner {
+      background: linear-gradient(135deg, #fffbeb, #fef3c7);
+      border: 1px solid #fcd34d;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+    }
+
+    .event-alert-text {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #92400e;
+    }
+
+    .event-alert-action {
+      background: #d97706;
+      color: #ffffff;
+      font-size: 0.76rem;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+
+    /* 持ち物チェックリスト */
+    .belonging-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .belonging-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+
+    .belonging-item.checked {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+      color: var(--text-muted);
+    }
+
+    .belonging-checkbox {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      border: 2px solid #94a3b8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 0.85rem;
+      background: #ffffff;
+    }
+
+    .belonging-item.checked .belonging-checkbox {
+      background: var(--success);
+      border-color: var(--success);
+      color: #ffffff;
+    }
+
+    .belonging-text {
+      font-size: 0.93rem;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .belonging-item.checked .belonging-text {
+      text-decoration: line-through;
+    }
+
+    /* 昼食ボックス */
+    .lunch-box {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 10px;
+    }
+
+    .lunch-box.order {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+    }
+
+    .lunch-box.home {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+    }
+
+    .lunch-box.none {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+
+    .lunch-box.unregistered {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+    }
+
+    .lunch-icon {
+      font-size: 1.6rem;
+      line-height: 1;
+    }
+
+    .lunch-content {
+      flex: 1;
+    }
+
+    .lunch-category {
+      font-size: 0.78rem;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .lunch-menu {
+      font-size: 0.96rem;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .lunch-note {
+      font-size: 0.78rem;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+
+    /* 時間割リスト */
+    .timetable-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .period-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #f8fafc;
+      border: 1px solid #f1f5f9;
+    }
+
+    .period-num {
+      width: 52px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: var(--text-sub);
+      background: #e2e8f0;
+      padding: 4px 6px;
+      border-radius: 6px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .period-num.p0 {
+      background: #ede9fe;
+      color: #5b21b6;
+    }
+
+    .period-subject {
+      font-size: 0.93rem;
+      font-weight: 700;
+      color: var(--text-main);
+      flex: 1;
+    }
+
+    .period-empty {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 0.85rem;
+    }
+
+    /* 特記事項・下校ボックス */
+    .notice-box {
+      background: #fffbeb;
+      border-left: 4px solid var(--accent);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      color: #78350f;
+      white-space: pre-wrap;
+      margin-top: 8px;
+    }
+
+    .dismissal-box {
+      background: #f0f9ff;
+      border-left: 4px solid #0284c7;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #0c4a6e;
+      margin-bottom: 8px;
+    }
+
+    /* 参照資料リンクボタン */
+    .ref-links {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .ref-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--primary-dark);
+      text-decoration: none;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .ref-btn.disabled {
+      color: var(--text-sub);
+      background: #f1f5f9;
+      cursor: default;
+    }
+
+    /* 週間ビュー */
+    .weekly-prep-card {
+      background: linear-gradient(135deg, #eff6ff, #f5f3ff);
+      border: 1px solid #c7d2fe;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .weekly-prep-item {
+      padding: 6px 0;
+      border-bottom: 1px dashed #cbd5e1;
+      font-size: 0.86rem;
+    }
+
+    .weekly-prep-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .weekly-day-card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .weekly-day-card.today-highlight {
+      border: 2px solid var(--primary);
+    }
+
+    .weekly-day-header {
+      padding: 10px 14px;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .weekly-day-title {
+      font-size: 0.98rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .weekly-day-date {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .weekly-day-body {
+      padding: 12px 14px;
+    }
+
+    .weekly-periods-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .weekly-period-chip {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+    }
+
+    .weekly-period-num {
+      font-weight: 800;
+      color: var(--primary);
+      font-size: 0.74rem;
+      flex-shrink: 0;
+    }
+
+    .weekly-meta-row {
+      font-size: 0.84rem;
+      margin-top: 6px;
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+
+    .weekly-meta-belongings {
+      background: #ecfdf5;
+      color: #065f46;
+      font-weight: 600;
+    }
+
+    .weekly-meta-notes {
+      background: #fffbeb;
+      color: #92400e;
+    }
+
+    /* イベントビュー */
+    .event-select {
+      width: 100%;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-size: 0.9rem;
+      font-weight: 700;
+      appearance: auto;
+    }
+
+    .event-hero {
+      background: linear-gradient(135deg, #1e3a8a, #2563eb);
+      color: #ffffff;
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .event-hero-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      margin: 6px 0 8px 0;
+    }
+
+    .event-hero-meta {
+      font-size: 0.86rem;
+      opacity: 0.95;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .info-block {
+      white-space: pre-wrap;
+      font-size: 0.9rem;
+      color: var(--text-main);
+      background: #f8fafc;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .parent-card {
+      border: 2px solid #c4b5fd;
+      background: #faf5ff;
+    }
+
+    /* 下部固定タブバー */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 200;
+      background: #ffffff;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      padding: 6px 4px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      height: 100%;
-      padding: 20px;
-    }
-    .setup-card {
-      background: #ffffff;
-      border-radius: 14px;
-      padding: 20px;
-      max-width: 440px;
-      width: 100%;
-      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
-      border: 1px solid #e2e8f0;
-    }
-    .setup-title {
-      font-size: 1.15rem;
-      font-weight: 800;
-      margin: 0 0 10px 0;
-      color: #1e40af;
-    }
-    .setup-desc {
-      font-size: 0.86rem;
-      color: #475569;
-      margin: 0 0 14px 0;
-      line-height: 1.5;
-    }
-    .url-input {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 0.88rem;
-      margin-bottom: 12px;
-    }
-    .save-btn {
-      width: 100%;
-      padding: 11px;
-      background: #2563eb;
-      color: #ffffff;
-      border: none;
-      border-radius: 8px;
-      font-size: 0.92rem;
+      gap: 3px;
+      color: var(--text-sub);
+      font-size: 0.74rem;
       font-weight: 700;
       cursor: pointer;
+      border-radius: 10px;
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+      background: var(--primary-light);
+    }
+
+    .tab-icon {
+      font-size: 1.25rem;
+      line-height: 1;
+    }
+
+    /* ローディング・認証・セットアップ画面 */
+    .center-box {
+      text-align: center;
+      padding: 32px 16px;
+    }
+
+    .primary-btn {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .primary-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .secondary-btn {
+      background: #f8fafc;
+      color: var(--text-sub);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 16px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
-  <div id="appRoot" style="width:100%; height:100%;"></div>
+
+  <!-- トップヘッダー -->
+  <header class="app-header">
+    <h1 class="app-title">🏫 学校カレンダー</h1>
+    <div class="header-actions">
+      <a id="linkSpreadsheet" class="header-btn" href="#" target="_blank" rel="noopener" style="display:none;">📊 シート</a>
+      <a id="linkFolder" class="header-btn" href="#" target="_blank" rel="noopener" style="display:none;">📁 資料</a>
+      <button id="btnRefresh" class="header-btn" onclick="refreshData()">🔄 更新</button>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ領域 -->
+  <main class="container" id="mainContainer">
+    <!-- JSで描画 -->
+  </main>
+
+  <!-- 下部ナビゲーション -->
+  <nav id="bottomNav" class="bottom-nav">
+    <button id="tabDaily" class="tab-btn" onclick="switchView('daily')">
+      <span class="tab-icon">📅</span>
+      <span>1日の予定</span>
+    </button>
+    <button id="tabWeekly" class="tab-btn" onclick="switchView('weekly')">
+      <span class="tab-icon">🗓️</span>
+      <span>1週間の予定</span>
+    </button>
+    <button id="tabEvent" class="tab-btn" onclick="switchView('event')">
+      <span class="tab-icon">🎪</span>
+      <span>イベント</span>
+    </button>
+  </nav>
 
   <script>
-    // GASのウェブアプリURLを固定したい場合はここに設定できます（空欄の場合は初回起動時に入力・保存）
-    const DEFAULT_GAS_EXEC_URL = "";
-    const STORAGE_KEY = "school_calendar_gas_exec_url";
+    const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
+    const SESSION_TOKEN_KEY = "school_cal_session_token";
+
+    let appState = {
+      payload: null,
+      isLoading: false,
+      loadingMessage: "データを読み込んでいます...",
+      currentView: "daily",
+      selectedDate: "",
+      selectedWeekMonday: "",
+      selectedEventId: "",
+    };
+
+    let tokenClient = null;
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
@@ -94,50 +795,1098 @@
       });
     }
 
-    function getTargetUrl() {
-      const params = new URLSearchParams(location.search);
-      const paramUrl = params.get("gas");
-      if (paramUrl && /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(paramUrl)) {
-        localStorage.setItem(STORAGE_KEY, paramUrl);
-        return paramUrl;
-      }
-      if (DEFAULT_GAS_EXEC_URL) return DEFAULT_GAS_EXEC_URL;
-      return localStorage.getItem(STORAGE_KEY) || "";
+    window.addEventListener("DOMContentLoaded", () => {
+      bootApp();
+    });
+
+    function getGoogleClientId() {
+      const cfg = window.APP_CONFIG || {};
+      return (cfg.GOOGLE_CLIENT_ID || "").trim();
     }
 
-    function renderShell() {
-      const root = document.getElementById("appRoot");
-      const url = getTargetUrl();
-      if (url) {
-        root.innerHTML = `<iframe src="${url}" allow="clipboard-read; clipboard-write"></iframe>`;
+    function getGasApiUrl() {
+      const cfg = window.APP_CONFIG || {};
+      return (cfg.GAS_API_URL || "").trim();
+    }
+
+    function isAppConfigured() {
+      const clientId = getGoogleClientId();
+      const apiUrl = getGasApiUrl();
+      if (!clientId || clientId.indexOf("YOUR_GOOGLE_CLIENT_ID") !== -1) return false;
+      if (!apiUrl || apiUrl.indexOf("YOUR_DEPLOYMENT_ID") !== -1) return false;
+      return true;
+    }
+
+    function getSavedSessionToken() {
+      try {
+        return localStorage.getItem(SESSION_TOKEN_KEY) || "";
+      } catch (_e) {
+        return "";
+      }
+    }
+
+    function saveSessionToken(token) {
+      try {
+        if (token) {
+          localStorage.setItem(SESSION_TOKEN_KEY, token);
+        } else {
+          localStorage.removeItem(SESSION_TOKEN_KEY);
+        }
+      } catch (_e) {
+        // ignore storage errors
+      }
+    }
+
+    async function callGasApi(requestBody) {
+      const apiUrl = getGasApiUrl();
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify(requestBody),
+        redirect: "follow",
+      });
+      if (!response.ok) {
+        throw new Error(`HTTPエラー (${response.status})`);
+      }
+      return await response.json();
+    }
+
+    async function bootApp() {
+      if (!isAppConfigured()) {
+        render();
+        return;
+      }
+
+      const savedToken = getSavedSessionToken();
+      if (!savedToken) {
+        appState.payload = {
+          status: "unauthenticated",
+          message: "Googleアカウントでログインしてください。",
+        };
+        render();
+        return;
+      }
+
+      appState.isLoading = true;
+      appState.loadingMessage = "予定データを読み込んでいます...";
+      render();
+
+      try {
+        const payload = await callGasApi({
+          action: "getData",
+          sessionToken: savedToken,
+        });
+        if (payload.status === "unauthenticated") {
+          saveSessionToken("");
+        }
+        applyPayload(payload, true);
+      } catch (err) {
+        appState.isLoading = false;
+        appState.payload = {
+          status: "error",
+          message: "サーバーとの通信に失敗しました: " + (err && err.message ? err.message : String(err)),
+        };
+        render();
+      }
+    }
+
+    function applyPayload(newPayload, applyInitialRoute) {
+      appState.isLoading = false;
+      appState.payload = newPayload;
+
+      if (newPayload && newPayload.sessionToken) {
+        saveSessionToken(newPayload.sessionToken);
+      }
+
+      if (applyInitialRoute && newPayload && newPayload.initialRoute) {
+        appState.currentView = newPayload.initialRoute.view || "daily";
+        appState.selectedDate = newPayload.initialRoute.targetDate || "";
+        appState.selectedWeekMonday = newPayload.initialRoute.targetWeekMonday || "";
+        appState.selectedEventId = newPayload.initialRoute.targetEventId || "";
+      }
+
+      updateHeaderLinks(newPayload);
+      render();
+    }
+
+    function startGoogleLogin(forceSelectAccount) {
+      if (!isAppConfigured()) {
+        render();
+        return;
+      }
+
+      if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
+        alert("Google認証ライブラリの読み込み中です。数秒後にもう一度お試しください。");
+        return;
+      }
+
+      const btnLogin = document.getElementById("btnGoogleLogin");
+      if (btnLogin) {
+        btnLogin.disabled = true;
+        btnLogin.textContent = "⏳ Google認証を開いています...";
+      }
+
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: getGoogleClientId(),
+        scope: "email",
+        callback: async (tokenResponse) => {
+          if (!tokenResponse || tokenResponse.error || !tokenResponse.access_token) {
+            if (btnLogin) {
+              btnLogin.disabled = false;
+              btnLogin.textContent = "🔑 Googleアカウントでログイン";
+            }
+            return;
+          }
+
+          appState.isLoading = true;
+          appState.loadingMessage = "アクセス権限を確認しています...";
+          render();
+
+          try {
+            const payload = await callGasApi({
+              action: "login",
+              accessToken: tokenResponse.access_token,
+            });
+            if (payload.sessionToken) {
+              saveSessionToken(payload.sessionToken);
+            } else if (payload.status === "unauthenticated" || payload.status === "unauthorized") {
+              saveSessionToken("");
+            }
+            applyPayload(payload, true);
+          } catch (err) {
+            appState.isLoading = false;
+            appState.payload = {
+              status: "error",
+              message: "ログイン処理中にエラーが発生しました: " + (err && err.message ? err.message : String(err)),
+            };
+            render();
+          }
+        },
+      });
+
+      tokenClient.requestAccessToken(
+        forceSelectAccount ? { prompt: "select_account" } : {}
+      );
+    }
+
+    async function switchGoogleAccount() {
+      const savedToken = getSavedSessionToken();
+      saveSessionToken("");
+      if (savedToken) {
+        try {
+          await callGasApi({ action: "logout", sessionToken: savedToken });
+        } catch (_e) {
+          // ignore logout errors
+        }
+      }
+      updateHeaderLinks(null);
+      startGoogleLogin(true);
+    }
+
+    function updateHeaderLinks(p) {
+      const ssLink = document.getElementById("linkSpreadsheet");
+      const folderLink = document.getElementById("linkFolder");
+
+      if (p && p.status === "ok" && p.spreadsheetUrl) {
+        ssLink.href = p.spreadsheetUrl;
+        ssLink.style.display = "inline-flex";
       } else {
-        root.innerHTML = `
-          <div class="setup-screen">
-            <div class="setup-card">
-              <h1 class="setup-title">🏫 学校カレンダー初期設定</h1>
-              <p class="setup-desc">
-                デプロイした Google Apps Script ウェブアプリのURL（<code>https://script.google.com/macros/s/.../exec</code>）を入力してください。一度保存すると次回から自動で開きます。
-              </p>
-              <input id="gasUrlInput" class="url-input" type="url" placeholder="https://script.google.com/macros/s/.../exec">
-              <button class="save-btn" onclick="saveGasUrl()">保存して開く</button>
+        ssLink.style.display = "none";
+      }
+
+      if (p && p.status === "ok" && p.folderUrl) {
+        folderLink.href = p.folderUrl;
+        folderLink.style.display = "inline-flex";
+      } else {
+        folderLink.style.display = "none";
+      }
+    }
+
+    function switchView(viewName) {
+      if (!appState.payload || appState.payload.status !== "ok") return;
+      appState.currentView = viewName;
+
+      // イベント画面を開いた際、未選択なら直近の未開催イベント（または最新イベント）を選択
+      if (viewName === "event" && !appState.selectedEventId) {
+        appState.selectedEventId = pickDefaultEventId();
+      }
+
+      render();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function pickDefaultEventId() {
+      const events = (appState.payload && appState.payload.events) || [];
+      if (events.length === 0) return "";
+      const today = appState.payload.initialRoute.todayDate;
+      for (const ev of events) {
+        if (ev.date >= today) return ev.id;
+      }
+      return events[events.length - 1].id;
+    }
+
+    function render() {
+      // タブのアクティブ状態更新
+      document.getElementById("tabDaily").classList.toggle("active", appState.currentView === "daily");
+      document.getElementById("tabWeekly").classList.toggle("active", appState.currentView === "weekly");
+      document.getElementById("tabEvent").classList.toggle("active", appState.currentView === "event");
+
+      const container = document.getElementById("mainContainer");
+
+      if (!isAppConfigured()) {
+        container.innerHTML = `
+          <div class="card center-box">
+            <div style="font-size:2.4rem; margin-bottom:8px;">⚙️</div>
+            <h2 style="margin:0 0 8px 0; font-size:1.1rem;">フロントエンド設定が必要です</h2>
+            <p style="color:var(--text-sub); font-size:0.88rem; margin:0; text-align:left; line-height:1.6;">
+              <code>docs/config.js</code> に以下の2つの設定値を入力してください：<br>
+              1. <code>GOOGLE_CLIENT_ID</code>（Google Cloud の OAuth クライアントID）<br>
+              2. <code>GAS_API_URL</code>（GAS ウェブアプリのデプロイURL）
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      if (appState.isLoading) {
+        container.innerHTML = `<div class="card center-box">⏳ ${escapeHtml(appState.loadingMessage || "データを読み込んでいます...")}</div>`;
+        return;
+      }
+
+      const p = appState.payload;
+      if (!p || p.status === "unauthenticated" || p.status === "logged_out") {
+        container.innerHTML = `
+          <div class="card center-box">
+            <div style="font-size:2.6rem; margin-bottom:8px;">🏫</div>
+            <h2 style="margin:0 0 8px 0; font-size:1.15rem;">学校カレンダー</h2>
+            <p style="color:var(--text-sub); font-size:0.9rem; margin:0 0 8px 0;">
+              予定を表示するには、カレンダー管理ファイルへのアクセス権がある Google アカウントでログインしてください。
+            </p>
+            <button id="btnGoogleLogin" class="primary-btn" onclick="startGoogleLogin(false)">
+              🔑 Googleアカウントでログイン
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      if (p.status === "needs_setup") {
+        container.innerHTML = `
+          <div class="card center-box">
+            <div style="font-size:2.4rem; margin-bottom:8px;">📋</div>
+            <h2 style="margin:0 0 8px 0; font-size:1.1rem;">初期セットアップ</h2>
+            <p style="color:var(--text-sub); font-size:0.9rem; margin:0 0 12px 0;">
+              ${escapeHtml(p.message || "スプレッドシートが未作成です。")}
+            </p>
+            <button id="btnSetup" class="primary-btn" onclick="runInitialSetup()">
+              ✨ サンプル入りスプレッドシートを自動作成する
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      if (p.status === "unauthorized") {
+        container.innerHTML = `
+          <div class="card center-box">
+            <div style="font-size:2.4rem; margin-bottom:8px;">🔒</div>
+            <h2 style="margin:0 0 8px 0; font-size:1.1rem;">アクセス権限がありません</h2>
+            ${p.userEmail ? `<p style="color:var(--text-muted); font-size:0.82rem; margin:0 0 6px 0;">ログイン中: ${escapeHtml(p.userEmail)}</p>` : ""}
+            <p style="color:var(--text-sub); font-size:0.9rem; margin:0 0 12px 0;">
+              ${escapeHtml(p.message || "このGoogleアカウントにはカレンダー管理ファイルへのアクセス権限がありません。")}
+            </p>
+            <button class="primary-btn" onclick="switchGoogleAccount()">
+              🔄 別のGoogleアカウントでログイン
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      if (p.status === "error") {
+        container.innerHTML = `
+          <div class="card center-box">
+            <div style="font-size:2.4rem; margin-bottom:8px;">⚠️</div>
+            <h2 style="margin:0 0 8px 0; font-size:1.1rem;">読み込みエラー</h2>
+            <p style="color:var(--text-sub); font-size:0.9rem; margin:0 0 12px 0;">
+              ${escapeHtml(p.message || "ページの読み込みに失敗しました。")}
+            </p>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <button class="primary-btn" onclick="refreshData()">🔄 再試行する</button>
+              <button class="secondary-btn" onclick="switchGoogleAccount()">別のアカウントでログイン</button>
             </div>
           </div>
         `;
-      }
-    }
-
-    function saveGasUrl() {
-      const input = document.getElementById("gasUrlInput");
-      const val = (input.value || "").trim();
-      if (!val || !/^https:\/\/script\.google\.com\/macros\/s\//.test(val)) {
-        alert("有効な GAS ウェブアプリのURL（https://script.google.com/macros/s/.../exec）を入力してください。");
         return;
       }
-      localStorage.setItem(STORAGE_KEY, val);
-      renderShell();
+
+      if (appState.currentView === "daily") {
+        renderDailyView(container);
+      } else if (appState.currentView === "weekly") {
+        renderWeeklyView(container);
+      } else if (appState.currentView === "event") {
+        renderEventView(container);
+      }
     }
 
-    renderShell();
+    /* =====================================================
+     * 1. 1日の予定画面 (Daily View)
+     * ===================================================== */
+    function renderDailyView(container) {
+      const dateStr = appState.selectedDate || appState.payload.initialRoute.todayDate;
+      const todayStr = appState.payload.initialRoute.todayDate;
+      const tomorrowStr = addDays(todayStr, 1);
+      const dayData = getOrBuildDailyData(dateStr);
+
+      // 持ち物のチェック状態読み込み
+      const checkedMap = getBelongingsCheckedMap(dateStr);
+      const totalBelongings = dayData.belongings.length;
+      const checkedCount = dayData.belongings.filter((item) => checkedMap[item]).length;
+
+      // イベントバナー
+      let eventBannerHtml = "";
+      if (dayData.linkedEvents && dayData.linkedEvents.length > 0) {
+        eventBannerHtml = dayData.linkedEvents
+          .map(
+            (ev) => `
+          <div class="event-alert-banner" onclick="openEventById('${escapeAttr(ev.id)}')">
+            <div class="event-alert-text">🎪 イベント：${escapeHtml(ev.title)}</div>
+            <div class="event-alert-action">詳細を見る ▶</div>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      // 種別バッジ
+      let typeBadgeHtml = `<span class="badge badge-blue">通常登校</span>`;
+      if (dayData.type === "休校") {
+        typeBadgeHtml = `<span class="badge badge-red">休校日</span>`;
+      } else if (dayData.type === "イベント") {
+        typeBadgeHtml = `<span class="badge badge-amber">行事・特別日</span>`;
+      }
+
+      // 持ち物セクション
+      let belongingsHtml = "";
+      if (dayData.type === "休校") {
+        belongingsHtml = `<div style="color:var(--text-sub); font-size:0.88rem;">🏠 休校日のため持ち物はありません</div>`;
+      } else if (totalBelongings === 0) {
+        belongingsHtml = `<div style="color:var(--text-sub); font-size:0.88rem;">✨ 特別な持ち物の指定はありません（通常の学習用具・連絡帳・水筒）</div>`;
+      } else {
+        belongingsHtml = `
+          <ul class="belonging-list">
+            ${dayData.belongings
+              .map((item, idx) => {
+                const isChecked = !!checkedMap[item];
+                return `
+                <li class="belonging-item ${isChecked ? "checked" : ""}" onclick="toggleBelonging('${escapeAttr(dateStr)}', ${idx})">
+                  <div class="belonging-checkbox">${isChecked ? "✓" : ""}</div>
+                  <div class="belonging-text">${escapeHtml(item)}</div>
+                </li>
+              `;
+              })
+              .join("")}
+          </ul>
+        `;
+      }
+
+      // 昼食セクション
+      const lunch = dayData.lunch;
+      let lunchClass = "unregistered";
+      let lunchIcon = "⚠️";
+      if (lunch.category.indexOf("注文") !== -1) {
+        lunchClass = "order";
+        lunchIcon = "🍱";
+      } else if (lunch.category.indexOf("持参") !== -1 || lunch.category.indexOf("弁当") !== -1) {
+        lunchClass = "home";
+        lunchIcon = "🍙";
+      } else if (lunch.category.indexOf("不要") !== -1 || dayData.type === "休校") {
+        lunchClass = "none";
+        lunchIcon = "🏠";
+      }
+
+      const lunchHtml = `
+        <div class="lunch-box ${lunchClass}">
+          <div class="lunch-icon">${lunchIcon}</div>
+          <div class="lunch-content">
+            <div class="lunch-category">${escapeHtml(lunch.category)}</div>
+            <div class="lunch-menu">${escapeHtml(lunch.menu || (lunchClass === "home" ? "ご家庭のお弁当" : "昼食情報未登録"))}</div>
+            ${lunch.note ? `<div class="lunch-note">${escapeHtml(lunch.note)}</div>` : ""}
+          </div>
+        </div>
+      `;
+
+      // 下校・特記事項セクション
+      let notesSectionHtml = "";
+      if (dayData.dismissal || dayData.notes) {
+        notesSectionHtml = `
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">📌 下校・特記事項</h2>
+            </div>
+            ${dayData.dismissal ? `<div class="dismissal-box">🚌 ${escapeHtml(dayData.dismissal)}</div>` : ""}
+            ${dayData.notes ? `<div class="notice-box">${escapeHtml(dayData.notes)}</div>` : ""}
+          </div>
+        `;
+      }
+
+      // 時間割セクション
+      const periods = dayData.periods;
+      const periodEntries = [];
+      if (periods.p0) periodEntries.push({ label: "0時間目", val: periods.p0, isP0: true });
+      periodEntries.push({ label: "1時間目", val: periods.p1, isP0: false });
+      periodEntries.push({ label: "2時間目", val: periods.p2, isP0: false });
+      periodEntries.push({ label: "3時間目", val: periods.p3, isP0: false });
+      periodEntries.push({ label: "4時間目", val: periods.p4, isP0: false });
+      periodEntries.push({ label: "5時間目", val: periods.p5, isP0: false });
+      if (periods.p6) periodEntries.push({ label: "6時間目", val: periods.p6, isP0: false });
+
+      let timetableHtml = "";
+      if (dayData.type === "休校") {
+        timetableHtml = `<div style="color:var(--danger); font-weight:700; font-size:0.92rem; padding:6px 0;">🏠 本日は休校日です（${escapeHtml(dayData.notes || "授業なし")}）</div>`;
+      } else if (!dayData.hasScheduleData) {
+        timetableHtml = `<div style="color:var(--text-muted); font-size:0.88rem; padding:6px 0;">この日の時間割データはまだ登録されていません。</div>`;
+      } else {
+        timetableHtml = `
+          <div class="timetable-list">
+            ${periodEntries
+              .map(
+                (p) => `
+              <div class="period-row">
+                <div class="period-num ${p.isP0 ? "p0" : ""}">${p.label}</div>
+                <div class="period-subject">
+                  ${p.val ? escapeHtml(p.val) : `<span class="period-empty">―</span>`}
+                </div>
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      // 参照資料セクション
+      const refsHtml = renderReferenceLinksCard(dayData.references);
+
+      container.innerHTML = `
+        <!-- 日付ナビ -->
+        <div class="nav-card">
+          <div class="nav-row">
+            <button class="nav-arrow-btn" onclick="changeDailyDate('${addDays(dateStr, -1)}')">◀ 前日</button>
+            <div class="nav-center">
+              <div class="nav-date-label">
+                <span>${formatDateJa(dateStr)} (${dayData.dayOfWeek})</span>
+              </div>
+              <input type="date" class="hidden-date-input" value="${dateStr}" onchange="changeDailyDate(this.value)">
+            </div>
+            <button class="nav-arrow-btn" onclick="changeDailyDate('${addDays(dateStr, 1)}')">翌日 ▶</button>
+          </div>
+          <div class="quick-chips">
+            <button class="chip-btn ${dateStr === todayStr ? "active" : ""}" onclick="changeDailyDate('${todayStr}')">今日 (${formatShortMd(todayStr)})</button>
+            <button class="chip-btn ${dateStr === tomorrowStr ? "active" : ""}" onclick="changeDailyDate('${tomorrowStr}')">明日 (${formatShortMd(tomorrowStr)})</button>
+            <button class="chip-btn" onclick="jumpToWeekOfDate('${dateStr}')">この週の予定一覧へ ▶</button>
+          </div>
+        </div>
+
+        ${eventBannerHtml}
+
+        <!-- 持ち物カード -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🎒 持っていくもの</h2>
+            ${
+              totalBelongings > 0
+                ? `<span class="badge ${checkedCount === totalBelongings ? "badge-green" : "badge-amber"}">${checkedCount} / ${totalBelongings} 完了</span>`
+                : typeBadgeHtml
+            }
+          </div>
+          ${belongingsHtml}
+        </div>
+
+        <!-- 昼食カード -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🍱 昼食</h2>
+          </div>
+          ${lunchHtml}
+        </div>
+
+        ${notesSectionHtml}
+
+        <!-- 時間割カード -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📖 時間割</h2>
+            ${typeBadgeHtml}
+          </div>
+          ${timetableHtml}
+        </div>
+
+        ${refsHtml}
+      `;
+    }
+
+    function changeDailyDate(newDateStr) {
+      if (!newDateStr) return;
+      appState.selectedDate = newDateStr;
+      render();
+    }
+
+    function jumpToWeekOfDate(dateStr) {
+      appState.selectedWeekMonday = getMonday(dateStr);
+      switchView("weekly");
+    }
+
+    /* =====================================================
+     * 2. 1週間の予定画面 (Weekly View: 月〜金)
+     * ===================================================== */
+    function renderWeeklyView(container) {
+      const todayStr = appState.payload.initialRoute.todayDate;
+      const currentWeekMon = getMonday(todayStr);
+      const nextWeekMon = addDays(currentWeekMon, 7);
+
+      const mondayStr = appState.selectedWeekMonday || currentWeekMon;
+      const fridayStr = addDays(mondayStr, 4);
+
+      const weekDays = [];
+      for (let i = 0; i < 5; i++) {
+        const d = addDays(mondayStr, i);
+        weekDays.push(getOrBuildDailyData(d));
+      }
+
+      // 週末チェック用：その週の持ち物・特記事項まとめピックアップ
+      const prepItems = [];
+      for (const d of weekDays) {
+        if (d.belongings.length > 0 || d.notes || d.type === "イベント" || d.type === "休校") {
+          const parts = [];
+          if (d.type === "休校") parts.push(`【休校】${d.notes || ""}`);
+          if (d.belongings.length > 0) parts.push(`🎒 持ち物：${d.belongings.join("・")}`);
+          if (d.notes && d.type !== "休校") parts.push(`📌 ${d.notes}`);
+          prepItems.push({
+            date: d.date,
+            label: `${formatShortMd(d.date)}(${d.dayOfWeek})`,
+            text: parts.join(" ／ "),
+          });
+        }
+      }
+
+      let prepSummaryHtml = "";
+      if (prepItems.length > 0) {
+        prepSummaryHtml = `
+          <div class="weekly-prep-card">
+            <div style="font-size:0.9rem; font-weight:800; color:#1e3a8a; margin-bottom:6px;">
+              💡 この週の持ち物・特記事項チェック
+            </div>
+            ${prepItems
+              .map(
+                (item) => `
+              <div class="weekly-prep-item" onclick="openDailyFromWeekly('${item.date}')" style="cursor:pointer;">
+                <strong style="color:var(--primary-dark);">${escapeHtml(item.label)}：</strong>
+                <span>${escapeHtml(item.text)}</span>
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      // 月〜金の各カード
+      const daysCardsHtml = weekDays
+        .map((d) => {
+          const isToday = d.date === todayStr;
+
+          let statusBadge = "";
+          if (d.type === "休校") {
+            statusBadge = `<span class="badge badge-red">休校</span>`;
+          } else if (d.type === "イベント" || (d.linkedEvents && d.linkedEvents.length > 0)) {
+            statusBadge = `<span class="badge badge-amber">行事あり</span>`;
+          }
+
+          // 昼食ミニ表示
+          let lunchMini = "";
+          if (d.type !== "休校") {
+            if (d.lunch.category.indexOf("注文") !== -1) {
+              lunchMini = `<span class="badge badge-green">🍱 ${escapeHtml(d.lunch.menu || "注文弁当")}</span>`;
+            } else if (d.lunch.category.indexOf("持参") !== -1) {
+              lunchMini = `<span class="badge badge-blue">🍙 弁当持参</span>`;
+            } else if (d.lunch.category.indexOf("不要") !== -1) {
+              lunchMini = `<span class="badge badge-gray">昼食なし</span>`;
+            }
+          }
+
+          // 時間割チップ
+          const pList = [];
+          if (d.periods.p0) pList.push({ n: "0", v: d.periods.p0 });
+          if (d.periods.p1) pList.push({ n: "1", v: d.periods.p1 });
+          if (d.periods.p2) pList.push({ n: "2", v: d.periods.p2 });
+          if (d.periods.p3) pList.push({ n: "3", v: d.periods.p3 });
+          if (d.periods.p4) pList.push({ n: "4", v: d.periods.p4 });
+          if (d.periods.p5) pList.push({ n: "5", v: d.periods.p5 });
+          if (d.periods.p6) pList.push({ n: "6", v: d.periods.p6 });
+
+          let bodyContent = "";
+          if (d.type === "休校") {
+            bodyContent = `<div style="color:var(--danger); font-weight:700; font-size:0.88rem;">🏠 休校日（${escapeHtml(d.notes || "授業なし")}）</div>`;
+          } else {
+            const periodsGrid =
+              pList.length > 0
+                ? `<div class="weekly-periods-grid">
+                    ${pList
+                      .map(
+                        (p) => `
+                      <div class="weekly-period-chip">
+                        <span class="weekly-period-num">${p.n}</span>
+                        <span>${escapeHtml(p.v)}</span>
+                      </div>
+                    `
+                      )
+                      .join("")}
+                  </div>`
+                : `<div style="color:var(--text-muted); font-size:0.82rem; margin-bottom:6px;">時間割未登録</div>`;
+
+            const belongingsRow =
+              d.belongings.length > 0
+                ? `<div class="weekly-meta-row weekly-meta-belongings">🎒 <strong>持ち物：</strong>${escapeHtml(d.belongings.join("、"))}</div>`
+                : "";
+
+            const notesParts = [];
+            if (d.dismissal) notesParts.push(`🚌 ${d.dismissal}`);
+            if (d.notes) notesParts.push(`📌 ${d.notes}`);
+            const notesRow =
+              notesParts.length > 0
+                ? `<div class="weekly-meta-row weekly-meta-notes">${escapeHtml(notesParts.join(" ／ "))}</div>`
+                : "";
+
+            bodyContent = `${periodsGrid}${belongingsRow}${notesRow}`;
+          }
+
+          return `
+            <div class="weekly-day-card ${isToday ? "today-highlight" : ""}">
+              <div class="weekly-day-header" onclick="openDailyFromWeekly('${d.date}')">
+                <div class="weekly-day-title">
+                  <span class="weekly-day-date">${formatShortMd(d.date)} (${d.dayOfWeek})</span>
+                  ${statusBadge}
+                  ${lunchMini}
+                </div>
+                <span style="font-size:0.78rem; color:var(--primary); font-weight:700; white-space:nowrap; flex-shrink:0;">1日表示 ▶</span>
+              </div>
+              <div class="weekly-day-body">
+                ${bodyContent}
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+
+      container.innerHTML = `
+        <!-- 週移動ナビ -->
+        <div class="nav-card">
+          <div class="nav-row">
+            <button class="nav-arrow-btn" onclick="changeWeekMonday('${addDays(mondayStr, -7)}')">◀ 前の週</button>
+            <div class="nav-center">
+              <div class="nav-date-label">
+                <span>${formatShortMd(mondayStr)}(月) 〜 ${formatShortMd(fridayStr)}(金)</span>
+              </div>
+              <input type="date" class="hidden-date-input" value="${mondayStr}" onchange="changeWeekByAnyDate(this.value)">
+            </div>
+            <button class="nav-arrow-btn" onclick="changeWeekMonday('${addDays(mondayStr, 7)}')">次の週 ▶</button>
+          </div>
+          <div class="quick-chips">
+            <button class="chip-btn ${mondayStr === currentWeekMon ? "active" : ""}" onclick="changeWeekMonday('${currentWeekMon}')">今週 (${formatShortMd(currentWeekMon)}〜)</button>
+            <button class="chip-btn ${mondayStr === nextWeekMon ? "active" : ""}" onclick="changeWeekMonday('${nextWeekMon}')">来週 (${formatShortMd(nextWeekMon)}〜)</button>
+          </div>
+        </div>
+
+        ${prepSummaryHtml}
+
+        ${daysCardsHtml}
+      `;
+    }
+
+    function changeWeekMonday(newMondayStr) {
+      if (!newMondayStr) return;
+      appState.selectedWeekMonday = newMondayStr;
+      render();
+    }
+
+    function changeWeekByAnyDate(dateStr) {
+      if (!dateStr) return;
+      appState.selectedWeekMonday = getMonday(dateStr);
+      render();
+    }
+
+    function openDailyFromWeekly(dateStr) {
+      appState.selectedDate = dateStr;
+      switchView("daily");
+    }
+
+    /* =====================================================
+     * 3. イベント画面 (Event View)
+     * ===================================================== */
+    function renderEventView(container) {
+      const events = (appState.payload && appState.payload.events) || [];
+      const todayStr = appState.payload.initialRoute.todayDate;
+
+      if (events.length === 0) {
+        container.innerHTML = `
+          <div class="card center-box">
+            <div style="font-size:2rem; margin-bottom:8px;">🎪</div>
+            <p style="color:var(--text-sub);">現在登録されているイベントはありません。</p>
+          </div>
+        `;
+        return;
+      }
+
+      let currentIdx = events.findIndex((e) => e.id === appState.selectedEventId);
+      if (currentIdx === -1) {
+        const defaultId = pickDefaultEventId();
+        currentIdx = events.findIndex((e) => e.id === defaultId);
+        if (currentIdx === -1) currentIdx = 0;
+        appState.selectedEventId = events[currentIdx].id;
+      }
+
+      const ev = events[currentIdx];
+      const prevEv = currentIdx > 0 ? events[currentIdx - 1] : null;
+      const nextEv = currentIdx < events.length - 1 ? events[currentIdx + 1] : null;
+
+      let statusLabel = "開催予定";
+      let statusBadgeClass = "badge-amber";
+      if (ev.date === todayStr) {
+        statusLabel = "本日開催！";
+        statusBadgeClass = "badge-green";
+      } else if (ev.date < todayStr) {
+        statusLabel = "終了";
+        statusBadgeClass = "badge-gray";
+      }
+
+      const optionsHtml = events
+        .map((item) => {
+          const tag = item.date === todayStr ? "【本日】" : item.date > todayStr ? "【予定】" : "【終了】";
+          const selected = item.id === ev.id ? "selected" : "";
+          return `<option value="${escapeAttr(item.id)}" ${selected}>${tag}${formatShortMd(item.date)}(${item.dayOfWeek}) ${escapeHtml(item.title)}</option>`;
+        })
+        .join("");
+
+      const hasParentSection =
+        ev.parentParticipation !== "なし" || ev.parentSchedule || ev.parentNotes;
+
+      const parentSectionHtml = hasParentSection
+        ? `
+        <div class="card parent-card">
+          <div class="card-header">
+            <h2 class="card-title">👪 保護者の予定・持ち物・注意事項</h2>
+            <span class="badge badge-purple">保護者参加：${escapeHtml(ev.parentParticipation)}</span>
+          </div>
+          ${
+            ev.parentSchedule
+              ? `<div style="margin-bottom:10px;">
+                  <div style="font-size:0.8rem; font-weight:700; color:#5b21b6; margin-bottom:4px;">🕒 保護者のスケジュール・受付</div>
+                  <div class="info-block">${escapeHtml(ev.parentSchedule)}</div>
+                </div>`
+              : ""
+          }
+          ${
+            ev.parentNotes
+              ? `<div>
+                  <div style="font-size:0.8rem; font-weight:700; color:#5b21b6; margin-bottom:4px;">⚠️ 持ち物・注意事項</div>
+                  <div class="info-block">${escapeHtml(ev.parentNotes)}</div>
+                </div>`
+              : ""
+          }
+        </div>
+      `
+        : `
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">👪 保護者参加について</h2>
+            <span class="badge badge-gray">保護者参加：なし</span>
+          </div>
+          <div style="font-size:0.88rem; color:var(--text-sub);">児童のみの行事です。</div>
+        </div>
+      `;
+
+      const refsHtml = renderReferenceLinksCard(ev.references);
+
+      container.innerHTML = `
+        <!-- イベント選択ナビ -->
+        <div class="nav-card">
+          <div style="margin-bottom:8px;">
+            <select class="event-select" onchange="openEventById(this.value)">
+              ${optionsHtml}
+            </select>
+          </div>
+          <div class="nav-row">
+            <button class="nav-arrow-btn" ${!prevEv ? "disabled" : ""} onclick="${prevEv ? `openEventById('${escapeAttr(prevEv.id)}')` : ""}">◀ 前のイベント</button>
+            <button class="chip-btn" onclick="openDailyFromWeekly('${ev.date}')">この日の予定へ</button>
+            <button class="nav-arrow-btn" ${!nextEv ? "disabled" : ""} onclick="${nextEv ? `openEventById('${escapeAttr(nextEv.id)}')` : ""}">次のイベント ▶</button>
+          </div>
+        </div>
+
+        <!-- イベントヘッダー -->
+        <div class="event-hero">
+          <span class="badge ${statusBadgeClass}">${statusLabel}</span>
+          <h2 class="event-hero-title">${escapeHtml(ev.title)}</h2>
+          <div class="event-hero-meta">
+            <div>📅 開催日：${formatDateJa(ev.date)}（${ev.dayOfWeek}）</div>
+            ${ev.location ? `<div>📍 場所：${escapeHtml(ev.location)}</div>` : ""}
+          </div>
+        </div>
+
+        <!-- イベント内容 -->
+        ${
+          ev.summary
+            ? `
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">📋 イベントの内容</h2>
+            </div>
+            <div class="info-block">${escapeHtml(ev.summary)}</div>
+          </div>
+        `
+            : ""
+        }
+
+        <!-- 児童のスケジュール・持ち物 -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">👧 児童のスケジュール・持ち物</h2>
+          </div>
+          ${
+            ev.studentSchedule
+              ? `<div style="margin-bottom:10px;">
+                  <div style="font-size:0.8rem; font-weight:700; color:var(--text-sub); margin-bottom:4px;">🕒 スケジュール（登下校・集合）</div>
+                  <div class="info-block">${escapeHtml(ev.studentSchedule)}</div>
+                </div>`
+              : ""
+          }
+          ${
+            ev.studentBelongings
+              ? `<div>
+                  <div style="font-size:0.8rem; font-weight:700; color:var(--text-sub); margin-bottom:4px;">🎒 持ち物・服装</div>
+                  <div class="info-block">${escapeHtml(ev.studentBelongings)}</div>
+                </div>`
+              : ""
+          }
+        </div>
+
+        <!-- 保護者のスケジュール・持ち物 -->
+        ${parentSectionHtml}
+
+        ${refsHtml}
+      `;
+    }
+
+    function openEventById(eventId) {
+      appState.selectedEventId = eventId;
+      switchView("event");
+    }
+
+    /* =====================================================
+     * 共通ヘルパー・ローカルストレージ・API通信
+     * ===================================================== */
+    function renderReferenceLinksCard(refs) {
+      if (!refs || refs.length === 0) return "";
+      const itemsHtml = refs
+        .map((r) => {
+          if (r.url) {
+            return `
+              <a class="ref-btn" href="${escapeAttr(r.url)}" target="_blank" rel="noopener">
+                <span>📄 ${escapeHtml(r.name)}</span>
+                <span>開く ↗</span>
+              </a>
+            `;
+          } else {
+            return `
+              <div class="ref-btn disabled">
+                <span>📄 ${escapeHtml(r.name)}</span>
+                <span style="font-size:0.75rem;">（フォルダ内に未配置）</span>
+              </div>
+            `;
+          }
+        })
+        .join("");
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📎 参照資料リンク</h2>
+          </div>
+          <div class="ref-links">
+            ${itemsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    function getOrBuildDailyData(dateStr) {
+      const map = (appState.payload && appState.payload.dailyMap) || {};
+      if (map[dateStr]) {
+        return map[dateStr];
+      }
+      const dow = getDayOfWeekJa(dateStr);
+      const isWeekend = dow === "土" || dow === "日";
+      return {
+        date: dateStr,
+        dayOfWeek: dow,
+        type: isWeekend ? "休校" : "通常",
+        periods: { p0: "", p1: "", p2: "", p3: "", p4: "", p5: "", p6: "" },
+        dismissal: "",
+        belongings: [],
+        belongingsRaw: "",
+        notes: isWeekend ? "週末（土日）" : "",
+        lunch: {
+          date: dateStr,
+          dayOfWeek: dow,
+          category: isWeekend ? "不要" : "未登録",
+          menu: isWeekend ? "休日" : "",
+          note: "",
+          references: [],
+        },
+        references: [],
+        linkedEvents: [],
+        hasScheduleData: false,
+      };
+    }
+
+    function getBelongingsCheckedMap(dateStr) {
+      try {
+        const raw = localStorage.getItem("school_cal_chk_" + dateStr);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function toggleBelonging(dateStr, index) {
+      const dayData = getOrBuildDailyData(dateStr);
+      const item = dayData.belongings[index];
+      if (!item) return;
+      const map = getBelongingsCheckedMap(dateStr);
+      map[item] = !map[item];
+      try {
+        localStorage.setItem("school_cal_chk_" + dateStr, JSON.stringify(map));
+      } catch (e) {
+        // ignore storage quota errors
+      }
+      render();
+    }
+
+    async function refreshData() {
+      const savedToken = getSavedSessionToken();
+      if (!savedToken) {
+        startGoogleLogin(false);
+        return;
+      }
+
+      const btn = document.getElementById("btnRefresh");
+      if (btn) {
+        btn.textContent = "⏳ 読込中";
+        btn.disabled = true;
+      }
+
+      try {
+        const newPayload = await callGasApi({
+          action: "getData",
+          sessionToken: savedToken,
+        });
+        if (newPayload.status === "unauthenticated") {
+          saveSessionToken("");
+        }
+        applyPayload(newPayload, false);
+      } catch (err) {
+        alert("更新に失敗しました: " + (err && err.message ? err.message : String(err)));
+      } finally {
+        if (btn) {
+          btn.textContent = "🔄 更新";
+          btn.disabled = false;
+        }
+      }
+    }
+
+    async function runInitialSetup() {
+      const savedToken = getSavedSessionToken();
+      if (!savedToken) {
+        startGoogleLogin(false);
+        return;
+      }
+
+      const btn = document.getElementById("btnSetup");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ スプレッドシートを作成しています...";
+      }
+
+      try {
+        const newPayload = await callGasApi({
+          action: "setup",
+          sessionToken: savedToken,
+        });
+        if (newPayload.status === "unauthenticated") {
+          saveSessionToken("");
+        }
+        applyPayload(newPayload, true);
+      } catch (err) {
+        alert("セットアップに失敗しました: " + (err && err.message ? err.message : String(err)));
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "✨ サンプル入りスプレッドシートを自動作成する";
+        }
+      }
+    }
+
+    /* 日付ユーティリティ */
+    function parseYmd(ymd) {
+      const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10));
+      return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    }
+
+    function addDays(ymd, days) {
+      const dt = parseYmd(ymd);
+      dt.setUTCDate(dt.getUTCDate() + days);
+      const y = dt.getUTCFullYear();
+      const m = ("0" + (dt.getUTCMonth() + 1)).slice(-2);
+      const d = ("0" + dt.getUTCDate()).slice(-2);
+      return `${y}-${m}-${d}`;
+    }
+
+    function getDayOfWeekJa(ymd) {
+      return DAY_NAMES[parseYmd(ymd).getUTCDay()] || "";
+    }
+
+    function getMonday(ymd) {
+      const dow = parseYmd(ymd).getUTCDay();
+      const diff = dow === 0 ? -6 : 1 - dow;
+      return addDays(ymd, diff);
+    }
+
+    function formatDateJa(ymd) {
+      if (!ymd) return "";
+      const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10));
+      return `${y}年${m}月${d}日`;
+    }
+
+    function formatShortMd(ymd) {
+      if (!ymd) return "";
+      const [, m, d] = ymd.split("-").map((n) => parseInt(n, 10));
+      return `${m}/${d}`;
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function escapeAttr(str) {
+      return escapeHtml(str);
+    }
   </script>
 </body>
 </html>

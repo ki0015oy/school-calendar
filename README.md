@@ -1,20 +1,37 @@
-# 学校カレンダー管理 Webアプリ (Google Apps Script + clasp)
+# 学校カレンダー管理 PWA (GitHub Pages + Google Apps Script API)
 
-Google Drive の特定フォルダに格納されたスプレッドシートと配布資料（PDF・画像）をもとに、子どもの **1日の予定・1週間の予定・イベント情報** をスマホで快適に確認できる保護者向けWebアプリです。
+Google Drive の特定フォルダに格納されたスプレッドシートと配布資料（PDF・画像）をもとに、子どもの **1日の予定・1週間の予定・イベント情報** をスマホで快適に確認できる保護者向けPWAアプリです。
+
+---
+
+## 🏗️ アーキテクチャとセキュリティ
+
+- **フロントエンド (`docs/`)**: GitHub Pages 上で動作するネイティブ PWA（Service Worker + Web App Manifest 対応）。
+- **認証 (Google Cloud OAuth)**: Google Identity Services を用いてサイト全体に Google ログインを要求します。審査不要の非機密スコープ **`email` のみ** を使用します。
+- **バックエンド (`src/`)**: Google Apps Script (GAS) を JSON API バックエンドとして構成（実行ユーザー: **自分 (`ME`)**、アクセス権: **全員 (`ANYONE_ANONYMOUS`)**）。
+- **独自のファイルアクセス権チェック & トークン管理**:
+  1. フロントエンドから受け取った Google OAuth トークンを GAS 側で Google Tokeninfo API (`https://oauth2.googleapis.com/tokeninfo`) に照会してメールアドレスを検証。
+  2. そのメールアドレスが Google Drive 上の **`学校カレンダー管理` スプレッドシート** または **`学校カレンダー` フォルダ** に対してアクセス権（オーナー・編集者・閲覧者）を持っているかを GAS 側で独自にチェック。
+  3. アクセス権がある場合のみ、独自セッショントークン（`PropertiesService` 管理）を発行し、カレンダーデータを返却します。アクセス権がないユーザーにはデータを一切返しません。
 
 ---
 
 ## 📁 ファイル構成
 
 ```
-school_calendar/
-├── src/
-│   ├── appsscript.json   # GASマニフェスト（Asia/Tokyo、USER_ACCESSING Webアプリ設定）
-│   ├── types.ts          # データ構造・型定義
+school-calendar/
+├── docs/                 # GitHub Pages 公開用 PWA フロントエンド
+│   ├── index.html        # スマホ最適化 SPA（Google OAuth 認証・1日/週間/イベント表示）
+│   ├── config.js         # GOOGLE_CLIENT_ID / GAS_API_URL の設定ファイル
+│   ├── manifest.json     # PWA Web App Manifest
+│   ├── sw.js             # Service Worker
+│   ├── icon-192.png      # PWA アイコン (192x192)
+│   └── icon-512.png      # PWA アイコン (512x512)
+├── src/                  # Google Apps Script バックエンド（JSON API）
+│   ├── appsscript.json   # GASマニフェスト（executeAs: ME, access: ANYONE_ANONYMOUS）
+│   ├── types.ts          # データ構造・APIレスポンス・セッション型定義
 │   ├── template.ts       # スプレッドシート&フォルダの自動作成・サンプルデータ投入
-│   ├── index.ts          # バックエンド（シート読込・日付結合・自動初期表示判定）
-│   └── app.html          # スマホ最適化WebアプリUI（1日/週間/イベント切替・持ち物チェック）
-├── docs/                 # PWAインストール用ラッパー（Manifest / Service Worker / アイコン）
+│   └── index.ts          # JSON API (doPost/doGet)・OAuth検証・Drive権限判定・トークン管理
 ├── AI_PROMPTS.md         # 配布プリントから生成AIでスプレッドシートを更新するプロンプト集
 ├── package.json          # ビルド・デプロイ用スクリプト
 └── tsconfig.json         # TypeScript設定
@@ -22,46 +39,53 @@ school_calendar/
 
 ---
 
-## 🚀 デプロイと初期セットアップ手順
+## 🚀 セットアップとデプロイ手順
 
-### 1. GASへコードをプッシュ
-```bash
-npm run push:force
-```
+### 1. Google Cloud で OAuth クライアント ID を作成（スコープ: `email` のみ）
+1. [Google Cloud Console](https://console.cloud.google.com/) を開き、プロジェクトを選択（または新規作成）します。
+2. **「API とサービス」 ＞ 「OAuth 同意画面」** を開きます：
+   - User Type: **外部 (External)**（公開ステータスは「本番環境」にしても、`email` スコープのみのため Google による審査は不要です）
+   - スコープ: `.../auth/userinfo.email`（`email`）のみ
+3. **「API とサービス」 ＞ 「認証情報」 ＞ 「認証情報を作成」 ＞ 「OAuth クライアント ID」** を選択します：
+   - アプリケーションの種類: **ウェブ アプリケーション**
+   - **承認済みの JavaScript 生成元**: GitHub Pages のオリジンを登録します
+     - 例: `https://ki0015oy.github.io`
+4. 作成された **クライアント ID**（`xxxx.apps.googleusercontent.com`）を控えます。
 
-### 2. Webアプリとしてデプロイ（初回のみ）
-1. `npm run open` でブラウザの Google Apps Script エディタを開きます。
-2. 右上の **「デプロイ」 ＞ 「新しいデプロイ」** をクリックします。
-3. 種類の選択（歯車アイコン）で **「ウェブアプリ」** を選択します。
-4. 以下のように設定します：
-   - **説明**: `学校カレンダー v1`
-   - **次のユーザーとして実行**: **「ウェブアプリケーションにアクセスしているユーザー」**
-   - **アクセスできるユーザー**: **「Google アカウントを持つ全員」**
-5. **「デプロイ」** をクリックし、表示された **ウェブアプリのURL** を開きます。
+### 2. GAS バックエンドをプッシュ＆デプロイ
+1. コードをビルドして GAS にプッシュします：
+   ```bash
+   npm run push:force
+   ```
+2. `npm run open` で Google Apps Script エディタを開きます。
+3. 初回のみ、エディタ上部の関数選択で **`authorizeBackendScopes`**（または `setupTemplateSpreadsheet`）を選択して **「実行」** し、Drive / Spreadsheet / UrlFetch の権限を承認します。
+4. 右上の **「デプロイ」 ＞ 「新しいデプロイ」**（または「デプロイを管理」から編集）を開き、**「ウェブアプリ」** として以下の設定でデプロイします：
+   - **次のユーザーとして実行**: **「自分」 (`Me`)**
+   - **アクセスできるユーザー**: **「全員」 (`Anyone`)**
+5. 発行された **ウェブアプリの URL**（`https://script.google.com/macros/s/.../exec`）を控えます。
 
-### 3. テンプレートスプレッドシートの作成
-- デプロイしたWebアプリのURLを開き、画面に表示される **「✨ サンプル入りスプレッドシートを自動作成する」** ボタンを押します（またはGASエディタ上で `setupTemplateSpreadsheet` 関数を実行します）。
-- Google Drive 内に **`学校カレンダー`** フォルダと **`学校カレンダー管理`** スプレッドシート（`日次予定` / `昼食` / `イベント` の3シート＋サンプルPDFのデータ投入済み）が自動生成されます。
-- クラス通信や弁当控えなどのPDF（`sample_weekly.pdf`, `sample_lunch.pdf`, `sample_event.pdf` 等）をこの **`学校カレンダー`** フォルダ内にアップロードすると、アプリ内の「参照資料リンク」からワンタップで開けるようになります。
+### 3. `docs/config.js` の設定と GitHub Pages 公開
+1. `docs/config.js` を開き、手順 1・2 で取得した値を設定します：
+   ```javascript
+   window.APP_CONFIG = {
+     GOOGLE_CLIENT_ID: "あなたのクライアントID.apps.googleusercontent.com",
+     GAS_API_URL: "https://script.google.com/macros/s/あなたのデプロイID/exec",
+   };
+   ```
+2. GitHub にコミット＆プッシュします。
+3. GitHub リポジトリの **Settings ＞ Pages** で、Source を `Deploy from a branch`、Branch を `main` / `/docs` に設定して公開します。
 
 ### 4. 保護者（ご家族）への共有設定
-- Google Drive の **`学校カレンダー`** フォルダを右クリック ＞ **「共有」** を開き、**保護者のGoogleアカウント（ご夫婦など）のみ** を追加します。
-- これにより、共有された保護者のGoogleアカウントだけがWebアプリから予定を閲覧でき、第三者がURLを開いてもデータは一切表示されません。
+- Google Drive の **`学校カレンダー`** フォルダ（または **`学校カレンダー管理`** スプレッドシート）を右クリック ＞ **「共有」** を開き、閲覧を許可する保護者の Google アカウントを追加します。
+- ここで共有された Google アカウントのみがアプリにログインしてデータを取得できます。
 
 ---
 
-## 📱 スマホへのアプリ（PWA）インストール方法
+## 📱 スマホへの PWA インストール方法
 
-### 方法A：GASのWebアプリURLから直接ホーム画面に追加する（手軽）
-GAS側で `mobile-web-app-capable` / `apple-mobile-web-app-capable` およびアプリアイコンを設定済みのため、そのままホーム画面に追加して全画面アプリ風に起動できます。
-- **Android (Chrome)**: WebアプリのURLを開き、右上のメニュー「⋮」＞ **「ホーム画面に追加」** をタップ
-- **iPhone (Safari)**: WebアプリのURLを開き、下部の共有ボタン「↑」＞ **「ホーム画面に追加」** をタップ
-
-### 方法B：GitHub Pages 経由でネイティブPWAとしてインストールする（Service Worker + Manifest 完全対応）
-Google Apps Script の仕様上、`script.google.com` ドメイン直下では Service Worker を配信できないため、Chromeの「アプリをインストール（WebAPK）」を使う場合は `docs/` フォルダを GitHub Pages 等で公開します。
-1. GitHub リポジトリの **Settings ＞ Pages** で、Source を `Deploy from a branch`、Branch を `main` / `/docs` に設定して保存します。
-2. 公開された GitHub Pages のURL（`https://<ユーザー名>.github.io/school-calendar/?gas=<GASのexecのURL>`）をスマホの Chrome / Safari で開きます。
-3. ブラウザのメニューから **「アプリをインストール」**（または「ホーム画面に追加」）を選択すると、独立したPWAアプリとしてインストールされます。
+1. スマホのブラウザ（Android は Chrome、iPhone は Safari）で GitHub Pages の URL（`https://<ユーザー名>.github.io/school-calendar/`）を開きます。
+2. メニューから **「アプリをインストール」** または **「ホーム画面に追加」** をタップすると、独立したネイティブ PWA としてインストールされます。
+3. 初回起動時に Google アカウントでログインすると、以降はセッショントークンによりログイン状態が維持されます。
 
 ---
 
@@ -74,4 +98,3 @@ Google Apps Script の仕様上、`script.google.com` ドメイン直下では S
 | `npm run push` | ビルドしてGASへアップロード |
 | `npm run push:force` | マニフェスト（`appsscript.json`）ごと強制アップロード |
 | `npm run open` | ブラウザでGASエディタを開く |
-

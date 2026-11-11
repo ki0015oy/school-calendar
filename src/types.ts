@@ -65,11 +65,33 @@ interface InitialRoute {
 }
 
 interface AppDataPayload {
-  status: "ok" | "needs_setup" | "unauthorized" | "error";
+  status: "ok" | "needs_setup" | "unauthorized" | "unauthenticated" | "logged_out" | "error";
   message?: string;
+  userEmail?: string;
+  sessionToken?: string;
   spreadsheetUrl?: string;
   folderUrl?: string;
   initialRoute: InitialRoute;
   dailyMap: { [date: string]: DailySchedule };
   events: SchoolEventItem[];
 }
+
+interface SessionRecord {
+  email: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+interface SessionStoreMap {
+  [token: string]: SessionRecord;
+}
+
+interface ApiRequestBody {
+  action?: "login" | "getData" | "setup" | "logout";
+  accessToken?: string;
+  idToken?: string;
+  sessionToken?: string;
+  clientId?: string;
+  now?: string;
+}
+

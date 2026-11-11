@@ -4,132 +4,496 @@
 
 const DAY_NAMES_JA = ["日", "月", "火", "水", "木", "金", "土"];
 
-// ホーム画面追加・ファビコン用のアプリアイコンURL（PNG形式）
-const APP_FAVICON_PNG_URL =
-  "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3eb.png";
+// オプション: バックエンド側でもOAuthクライアントIDを固定検証したい場合に設定（空欄またはYOUR_...の場合はスキップ）
+const ALLOWED_OAUTH_CLIENT_ID = "";
+
+const PROP_KEY_SESSIONS = "AUTH_SESSIONS_JSON";
+const PROP_KEY_OAUTH_CLIENT_ID = "OAUTH_CLIENT_ID";
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30日間有効
+const MAX_SESSIONS = 30;
 
 /**
- * Webアプリのエントリーポイント
+ * POSTリクエストのエントリーポイント（GitHub Pages PWAからのJSON API呼び出し）
  */
-function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.HTML.HtmlOutput {
-  const overrideNow = e && e.parameter && e.parameter.now ? String(e.parameter.now) : undefined;
-  const payload = getAppData(overrideNow);
-
-  const template = HtmlService.createTemplateFromFile("app");
-  (template as unknown as { initialPayloadJson: string }).initialPayloadJson =
-    JSON.stringify(payload);
-
-  const output = template
-    .evaluate()
-    .setTitle("学校カレンダー")
-    .addMetaTag(
-      "viewport",
-      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
-    )
-    .addMetaTag("apple-mobile-web-app-capable", "yes")
-    .addMetaTag("mobile-web-app-capable", "yes")
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-
+function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.TextOutput {
+  let req: ApiRequestBody = {};
   try {
-    output.setFaviconUrl(APP_FAVICON_PNG_URL);
-  } catch (_e) {
-    // ファビコン設定が制限された場合は無視
-  }
-
-  const extraMetaTags: Array<[string, string]> = [
-    ["theme-color", "#1e40af"],
-    ["apple-mobile-web-app-status-bar-style", "default"],
-    ["apple-mobile-web-app-title", "学校カレンダー"],
-    ["application-name", "学校カレンダー"],
-  ];
-  for (const [name, content] of extraMetaTags) {
-    try {
-      output.addMetaTag(name, content);
-    } catch (_e) {
-      // GAS側で未サポートのmetaタグ名の場合は無視
+    if (e && e.postData && e.postData.contents) {
+      req = JSON.parse(e.postData.contents) as ApiRequestBody;
     }
+  } catch (_err) {
+    return createJsonResponse(
+      buildErrorPayload("error", "リクエスト形式が不正です (Invalid JSON)")
+    );
   }
-
-  return output;
+  const payload = handleApiRequest(req);
+  return createJsonResponse(payload);
 }
 
 /**
- * Webアプリ画面の「初期セットアップ」ボタンから呼ばれる関数
+ * GETリクエストのエントリーポイント（疎通確認・クエリパラメータ呼び出し対応）
  */
-function initializeAppFromWeb(): AppDataPayload {
-  setupTemplateSpreadsheet();
-  return getAppData();
+function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.Content.TextOutput {
+  const params = (e && e.parameter) || {};
+  const req: ApiRequestBody = {
+    action: (params.action as ApiRequestBody["action"]) || "getData",
+    accessToken: params.accessToken ? String(params.accessToken) : undefined,
+    idToken: params.idToken ? String(params.idToken) : undefined,
+    sessionToken: params.sessionToken ? String(params.sessionToken) : undefined,
+    clientId: params.clientId ? String(params.clientId) : undefined,
+    now: params.now ? String(params.now) : undefined,
+  };
+  const payload = handleApiRequest(req);
+  return createJsonResponse(payload);
 }
 
 /**
- * スプレッドシートおよびGoogle Driveから全データを取得して返す
+ * GASエディタから初回実行して必要な権限（Drive / Sheets / 外部通信）を承認するためのヘルパー関数
  */
-function getAppData(overrideNowIso?: string): AppDataPayload {
-  const now = parseNowJst(overrideNowIso);
-  const todayStr = formatDateYmd(now);
+function authorizeBackendScopes(): void {
+  const ownerEmail = Session.getEffectiveUser().getEmail();
+  DriveApp.getRootFolder().getName();
+  PropertiesService.getScriptProperties().getProperties();
+  UrlFetchApp.fetch("https://oauth2.googleapis.com/tokeninfo", { muteHttpExceptions: true });
+  console.log(`✅ バックエンド権限の承認が完了しました (実行ユーザー: ${ownerEmail})`);
+}
+
+/**
+ * APIリクエストのルーティング・認証・権限チェック
+ */
+function handleApiRequest(req: ApiRequestBody): AppDataPayload {
+  const action = req.action || "getData";
+  const now = parseNowJst(req.now);
 
   try {
-    const resolved = resolveSpreadsheetAndFolder();
-    if (!resolved.ss) {
-      return {
-        status: "needs_setup",
-        message:
-          "管理用スプレッドシートがまだ作成されていません。下のボタンからテンプレート（サンプルデータ入り）を自動作成できます。",
-        initialRoute: computeInitialRoute(now, {}, []),
-        dailyMap: {},
-        events: [],
-      };
+    // 1. ログアウト処理
+    if (action === "logout") {
+      if (req.sessionToken) {
+        revokeSessionToken(req.sessionToken);
+      }
+      return buildEmptyPayload("logged_out", now, {
+        message: "ログアウトしました。",
+      });
     }
 
-    const { ss, folder } = resolved;
-    const fileMap = buildDriveFileUrlMap(folder, ss);
+    // 2. ログイン処理（Google OAuth の access_token または id_token を検証してセッショントークンを発行）
+    if (action === "login") {
+      const verifiedEmail = verifyGoogleOAuthToken(
+        req.accessToken,
+        req.idToken,
+        req.clientId
+      );
+      if (!verifiedEmail) {
+        return buildEmptyPayload("unauthenticated", now, {
+          message: "Googleログインの認証トークンが無効または期限切れです。もう一度ログインしてください。",
+        });
+      }
 
-    // 1. 昼食シートの読み込み
-    const lunchMap = readLunchSheet(ss, fileMap);
+      const resolved = resolveSpreadsheetAndFolder();
+      if (!hasDrivePermission(verifiedEmail, resolved.ss, resolved.folder)) {
+        return buildEmptyPayload("unauthorized", now, {
+          userEmail: verifiedEmail,
+          message: `ログイン中のアカウント（${verifiedEmail}）には学校カレンダーのアクセス権限がありません。共有設定された保護者のGoogleアカウントでログインしてください。`,
+        });
+      }
 
-    // 2. イベントシートの読み込み
-    const events = readEventSheet(ss, fileMap);
+      const newSessionToken = issueSessionToken(verifiedEmail);
+      const dataPayload = getAppDataWithResolved(resolved, now);
+      dataPayload.userEmail = verifiedEmail;
+      dataPayload.sessionToken = newSessionToken;
+      return dataPayload;
+    }
 
-    // 3. 日次予定シートの読み込み & 昼食・イベントとの結合
-    const dailyMap = readDailySheet(ss, fileMap, lunchMap, events);
+    // 3. セッショントークンによる認証確認（getData / setup）
+    if (!req.sessionToken) {
+      return buildEmptyPayload("unauthenticated", now, {
+        message: "ログインが必要です。",
+      });
+    }
 
-    // 4. 閲覧タイミングに応じた初期表示ルーティングの計算
-    const initialRoute = computeInitialRoute(now, dailyMap, events);
+    const sessionEmail = validateSessionToken(req.sessionToken);
+    if (!sessionEmail) {
+      return buildEmptyPayload("unauthenticated", now, {
+        message: "ログインの有効期限が切れました。再度Googleアカウントでログインしてください。",
+      });
+    }
 
-    return {
-      status: "ok",
-      spreadsheetUrl: ss.getUrl(),
-      folderUrl: folder ? folder.getUrl() : undefined,
-      initialRoute: initialRoute,
-      dailyMap: dailyMap,
-      events: events,
-    };
+    let resolved = resolveSpreadsheetAndFolder();
+
+    // アクセス権のチェック（共有解除された場合は既存セッションも即座に拒否・破棄）
+    if (!hasDrivePermission(sessionEmail, resolved.ss, resolved.folder)) {
+      revokeSessionToken(req.sessionToken);
+      return buildEmptyPayload("unauthorized", now, {
+        userEmail: sessionEmail,
+        message: `ログイン中のアカウント（${sessionEmail}）には学校カレンダーのアクセス権限がありません。`,
+      });
+    }
+
+    // 4. 初期セットアップ実行（スプレッドシート自動作成）
+    if (action === "setup") {
+      setupTemplateSpreadsheet();
+      resolved = resolveSpreadsheetAndFolder();
+    }
+
+    // 5. カレンダーデータ取得
+    const dataPayload = getAppDataWithResolved(resolved, now);
+    dataPayload.userEmail = sessionEmail;
+    dataPayload.sessionToken = req.sessionToken;
+    return dataPayload;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    const isPermissionError =
-      message.indexOf("Permission") !== -1 ||
-      message.indexOf("権限") !== -1 ||
-      message.indexOf("アクセス") !== -1 ||
-      message.indexOf("Access denied") !== -1;
+    return buildEmptyPayload("error", now, {
+      message: `サーバー処理中にエラーが発生しました: ${message}`,
+    });
+  }
+}
 
+/**
+ * JSONレスポンスを生成する
+ */
+function createJsonResponse(payload: AppDataPayload): GoogleAppsScript.Content.TextOutput {
+  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(
+    ContentService.MimeType.JSON
+  );
+}
+
+/**
+ * 空のデータペイロードを生成する
+ */
+function buildEmptyPayload(
+  status: AppDataPayload["status"],
+  now: Date,
+  extra?: { message?: string; userEmail?: string; sessionToken?: string }
+): AppDataPayload {
+  const todayStr = formatDateYmd(now);
+  return {
+    status: status,
+    message: extra && extra.message ? extra.message : undefined,
+    userEmail: extra && extra.userEmail ? extra.userEmail : undefined,
+    sessionToken: extra && extra.sessionToken ? extra.sessionToken : undefined,
+    initialRoute: {
+      view: "daily",
+      targetDate: todayStr,
+      targetWeekMonday: getMondayOfDate(todayStr),
+      targetEventId: "",
+      reasonBanner: "",
+      nowIso: Utilities.formatDate(now, "Asia/Tokyo", "yyyy-MM-dd'T'HH:mm:ss"),
+      todayDate: todayStr,
+    },
+    dailyMap: {},
+    events: [],
+  };
+}
+
+function buildErrorPayload(
+  status: AppDataPayload["status"],
+  message: string
+): AppDataPayload {
+  return buildEmptyPayload(status, new Date(), { message });
+}
+
+/**
+ * Google OAuth の access_token（scope: email）または id_token を検証してメールアドレスを取得する
+ */
+function verifyGoogleOAuthToken(
+  accessToken?: string,
+  idToken?: string,
+  clientHintId?: string
+): string | null {
+  const configuredClientId =
+    (PropertiesService.getScriptProperties().getProperty(PROP_KEY_OAUTH_CLIENT_ID) ||
+      ALLOWED_OAUTH_CLIENT_ID ||
+      "").trim();
+
+  // 1. access_token の検証（scope: email）
+  if (accessToken && accessToken.trim()) {
+    const token = accessToken.trim();
+    const res = UrlFetchApp.fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`,
+      { muteHttpExceptions: true }
+    );
+    if (res.getResponseCode() === 200) {
+      const info = JSON.parse(res.getContentText()) as {
+        email?: string;
+        email_verified?: string | boolean;
+        aud?: string;
+        azp?: string;
+        error?: string;
+      };
+      if (!info.error && info.email && String(info.email_verified) !== "false") {
+        if (!isClientIdMatched(configuredClientId, clientHintId, info.aud, info.azp)) {
+          return null;
+        }
+        return info.email.trim().toLowerCase();
+      }
+    }
+  }
+
+  // 2. id_token の検証（Sign In With Google 用フォールバック）
+  if (idToken && idToken.trim()) {
+    const token = idToken.trim();
+    const res = UrlFetchApp.fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token)}`,
+      { muteHttpExceptions: true }
+    );
+    if (res.getResponseCode() === 200) {
+      const info = JSON.parse(res.getContentText()) as {
+        email?: string;
+        email_verified?: string | boolean;
+        aud?: string;
+        azp?: string;
+        error?: string;
+      };
+      if (!info.error && info.email && String(info.email_verified) !== "false") {
+        if (!isClientIdMatched(configuredClientId, clientHintId, info.aud, info.azp)) {
+          return null;
+        }
+        return info.email.trim().toLowerCase();
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * OAuth クライアントIDの一致確認
+ */
+function isClientIdMatched(
+  configuredClientId: string,
+  clientHintId: string | undefined,
+  aud?: string,
+  azp?: string
+): boolean {
+  const effectiveExpected =
+    configuredClientId && configuredClientId.indexOf("YOUR_") === -1
+      ? configuredClientId
+      : clientHintId && clientHintId.indexOf("YOUR_") === -1
+      ? clientHintId.trim()
+      : "";
+  if (!effectiveExpected) return true;
+  return aud === effectiveExpected || azp === effectiveExpected;
+}
+
+/**
+ * 指定されたメールアドレスが「学校カレンダー管理」スプレッドシートまたは「学校カレンダー」フォルダの
+ * アクセス権（オーナー・編集者・閲覧者）を持っているかチェックする
+ */
+function hasDrivePermission(
+  email: string,
+  ss: GoogleAppsScript.Spreadsheet.Spreadsheet | null,
+  folder: GoogleAppsScript.Drive.Folder | null
+): boolean {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return false;
+
+  // GASの実行ユーザー自身（オーナー）は常に許可
+  try {
+    const ownerEmail = Session.getEffectiveUser().getEmail().trim().toLowerCase();
+    if (ownerEmail && ownerEmail === normalized) {
+      return true;
+    }
+  } catch (_e) {
+    // 取得不可の場合はファイル権限チェックへ進む
+  }
+
+  const checkTargetPermission = (
+    target: GoogleAppsScript.Drive.File | GoogleAppsScript.Drive.Folder
+  ): boolean => {
+    try {
+      const owner = target.getOwner();
+      if (owner && owner.getEmail() && owner.getEmail().trim().toLowerCase() === normalized) {
+        return true;
+      }
+
+      const editors = target.getEditors();
+      for (const editor of editors) {
+        if (editor.getEmail() && editor.getEmail().trim().toLowerCase() === normalized) {
+          return true;
+        }
+      }
+
+      const viewers = target.getViewers();
+      for (const viewer of viewers) {
+        if (viewer.getEmail() && viewer.getEmail().trim().toLowerCase() === normalized) {
+          return true;
+        }
+      }
+
+      // フォルダ継承やGoogleグループ共有にも対応するため getAccess(email) も確認
+      // （ただし誤って「リンクを知っている全員」に公開されていた場合は第三者を弾くため PRIVATE / DOMAIN 時のみ許可）
+      const sharingAccess = target.getSharingAccess();
+      if (
+        sharingAccess === DriveApp.Access.PRIVATE ||
+        sharingAccess === DriveApp.Access.DOMAIN ||
+        sharingAccess === DriveApp.Access.DOMAIN_WITH_LINK
+      ) {
+        const perm = target.getAccess(normalized);
+        if (
+          perm === DriveApp.Permission.OWNER ||
+          perm === DriveApp.Permission.ORGANIZER ||
+          perm === DriveApp.Permission.EDIT ||
+          perm === DriveApp.Permission.COMMENT ||
+          perm === DriveApp.Permission.VIEW
+        ) {
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn("Drive権限チェックエラー:", e);
+    }
+    return false;
+  };
+
+  if (ss) {
+    try {
+      const ssFile = DriveApp.getFileById(ss.getId());
+      if (checkTargetPermission(ssFile)) {
+        return true;
+      }
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  if (folder) {
+    if (checkTargetPermission(folder)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 独自セッショントークンを発行して PropertiesService に保存する
+ */
+function issueSessionToken(email: string): string {
+  const props = PropertiesService.getScriptProperties();
+  const sessions = loadSessionMap(props);
+  const nowMs = Date.now();
+
+  const token = `${Utilities.getUuid()}-${Utilities.getUuid()}`;
+  sessions[token] = {
+    email: email.trim().toLowerCase(),
+    createdAt: nowMs,
+    expiresAt: nowMs + SESSION_TTL_MS,
+  };
+
+  saveSessionMap(props, sessions, nowMs);
+  return token;
+}
+
+/**
+ * セッショントークンを検証し、有効であれば有効期限を延長してメールアドレスを返す
+ */
+function validateSessionToken(token: string): string | null {
+  if (!token || !token.trim()) return null;
+  const props = PropertiesService.getScriptProperties();
+  const sessions = loadSessionMap(props);
+  const nowMs = Date.now();
+  const record = sessions[token.trim()];
+
+  if (!record || record.expiresAt <= nowMs) {
+    if (record) {
+      delete sessions[token.trim()];
+      saveSessionMap(props, sessions, nowMs);
+    }
+    return null;
+  }
+
+  // 有効期限を延長（スライディングセッション）
+  record.expiresAt = nowMs + SESSION_TTL_MS;
+  saveSessionMap(props, sessions, nowMs);
+  return record.email;
+}
+
+/**
+ * セッショントークンを破棄する
+ */
+function revokeSessionToken(token: string): void {
+  if (!token || !token.trim()) return;
+  const props = PropertiesService.getScriptProperties();
+  const sessions = loadSessionMap(props);
+  if (sessions[token.trim()]) {
+    delete sessions[token.trim()];
+    saveSessionMap(props, sessions, Date.now());
+  }
+}
+
+function loadSessionMap(
+  props: GoogleAppsScript.Properties.Properties
+): SessionStoreMap {
+  try {
+    const raw = props.getProperty(PROP_KEY_SESSIONS);
+    return raw ? (JSON.parse(raw) as SessionStoreMap) : {};
+  } catch (_e) {
+    return {};
+  }
+}
+
+function saveSessionMap(
+  props: GoogleAppsScript.Properties.Properties,
+  sessions: SessionStoreMap,
+  nowMs: number
+): void {
+  const validTokens = Object.keys(sessions).filter(
+    (k) => sessions[k] && sessions[k].expiresAt > nowMs
+  );
+  // 古い順にソートして上限数を超えた分を削除
+  validTokens.sort((a, b) => sessions[b].expiresAt - sessions[a].expiresAt);
+  const trimmed: SessionStoreMap = {};
+  for (let i = 0; i < Math.min(validTokens.length, MAX_SESSIONS); i++) {
+    const k = validTokens[i];
+    trimmed[k] = sessions[k];
+  }
+  props.setProperty(PROP_KEY_SESSIONS, JSON.stringify(trimmed));
+}
+
+/**
+ * スプレッドシートおよびGoogle Driveから全データを取得して返す（認証・権限確認済みユーザー用）
+ */
+function getAppDataWithResolved(
+  resolved: {
+    ss: GoogleAppsScript.Spreadsheet.Spreadsheet | null;
+    folder: GoogleAppsScript.Drive.Folder | null;
+  },
+  now: Date
+): AppDataPayload {
+  if (!resolved.ss) {
     return {
-      status: isPermissionError ? "unauthorized" : "error",
-      message: isPermissionError
-        ? "このページを閲覧する権限がありません。許可された保護者のGoogleアカウントでログインしているかご確認ください。"
-        : `データの読み込み中にエラーが発生しました: ${message}`,
-      initialRoute: {
-        view: "daily",
-        targetDate: todayStr,
-        targetWeekMonday: getMondayOfDate(todayStr),
-        targetEventId: "",
-        reasonBanner: "",
-        nowIso: Utilities.formatDate(now, "Asia/Tokyo", "yyyy-MM-dd'T'HH:mm:ss"),
-        todayDate: todayStr,
-      },
+      status: "needs_setup",
+      message:
+        "管理用スプレッドシートがまだ作成されていません。下のボタンからテンプレート（サンプルデータ入り）を自動作成できます。",
+      initialRoute: computeInitialRoute(now, {}, []),
       dailyMap: {},
       events: [],
     };
   }
+
+  const { ss, folder } = resolved;
+  const fileMap = buildDriveFileUrlMap(folder, ss);
+
+  // 1. 昼食シートの読み込み
+  const lunchMap = readLunchSheet(ss, fileMap);
+
+  // 2. イベントシートの読み込み
+  const events = readEventSheet(ss, fileMap);
+
+  // 3. 日次予定シートの読み込み & 昼食・イベントとの結合
+  const dailyMap = readDailySheet(ss, fileMap, lunchMap, events);
+
+  // 4. 閲覧タイミングに応じた初期表示ルーティングの計算
+  const initialRoute = computeInitialRoute(now, dailyMap, events);
+
+  return {
+    status: "ok",
+    spreadsheetUrl: ss.getUrl(),
+    folderUrl: folder ? folder.getUrl() : undefined,
+    initialRoute: initialRoute,
+    dailyMap: dailyMap,
+    events: events,
+  };
 }
 
 /**

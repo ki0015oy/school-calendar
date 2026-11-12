@@ -776,6 +776,7 @@
   <script>
     const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
     const SESSION_TOKEN_KEY = "school_cal_session_token";
+    const AUTO_REFRESH_CYCLE_KEY = "school_cal_last_refresh_cycle";
 
     let appState = {
       payload: null,
@@ -796,8 +797,66 @@
       });
     }
 
+    /**
+     * 日本時間（JST = UTC+9）の午前5:00を日付の切り替え境界とするサイクルキー（YYYY-MM-DD）を算出
+     * 例: 11/13 04:59 JST -> 2026-11-12
+     *     11/13 05:00 JST -> 2026-11-13
+     * 現在時刻 (UTC ms) に +4時間 (JST +9h - 5h) を加算した UTC 日付で判定
+     */
+    function getJstRefreshCycleKey() {
+      const d = new Date(Date.now() + 4 * 60 * 60 * 1000);
+      const y = d.getUTCFullYear();
+      const m = ("0" + (d.getUTCMonth() + 1)).slice(-2);
+      const day = ("0" + d.getUTCDate()).slice(-2);
+      return `${y}-${m}-${day}`;
+    }
+
+    function markRefreshCycleUpdated() {
+      try {
+        localStorage.setItem(AUTO_REFRESH_CYCLE_KEY, getJstRefreshCycleKey());
+      } catch (_e) {}
+    }
+
+    function getLastRefreshedCycle() {
+      try {
+        return localStorage.getItem(AUTO_REFRESH_CYCLE_KEY) || "";
+      } catch (_e) {
+        return "";
+      }
+    }
+
+    /**
+     * 画面がアクティブ（フォアグラウンド）になった際、
+     * 毎朝日本時間午前5時以降にまだ一度も更新されていない場合に1回だけ自動更新を実行する
+     */
+    async function checkAndTriggerDailyAutoRefresh() {
+      if (!appState.payload || appState.payload.status !== "ok" || appState.isLoading) {
+        return;
+      }
+      const savedToken = getSavedSessionToken();
+      if (!savedToken) return;
+
+      const currentCycle = getJstRefreshCycleKey();
+      const lastCycle = getLastRefreshedCycle();
+
+      if (currentCycle !== lastCycle) {
+        console.log(`[AutoRefresh] 画面アクティブ検知: 本日（5時以降）の更新を実行します (${currentCycle})`);
+        await refreshData(true);
+      }
+    }
+
     window.addEventListener("DOMContentLoaded", () => {
       bootApp();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        checkAndTriggerDailyAutoRefresh();
+      }
+    });
+
+    window.addEventListener("focus", () => {
+      checkAndTriggerDailyAutoRefresh();
     });
 
     function getGasApiUrl() {
@@ -882,6 +941,7 @@
             await showLoginFlow();
             return;
           }
+          markRefreshCycleUpdated();
           applyPayload(payload, true);
           return;
         } catch (err) {
@@ -1836,10 +1896,10 @@
       render();
     }
 
-    async function refreshData() {
+    async function refreshData(isSilent) {
       const savedToken = getSavedSessionToken();
       if (!savedToken) {
-        startGoogleLogin(false);
+        if (!isSilent) startGoogleLogin(false);
         return;
       }
 
@@ -1856,10 +1916,18 @@
         });
         if (newPayload.status === "unauthenticated") {
           saveSessionToken("");
+          if (!isSilent) {
+            startGoogleLogin(false);
+          }
+          return;
         }
+        markRefreshCycleUpdated();
         applyPayload(newPayload, false);
       } catch (err) {
-        alert("更新に失敗しました: " + (err && err.message ? err.message : String(err)));
+        console.warn("データ更新エラー:", err);
+        if (!isSilent) {
+          alert("更新に失敗しました: " + (err && err.message ? err.message : String(err)));
+        }
       } finally {
         if (btn) {
           btn.textContent = "🔄 更新";
